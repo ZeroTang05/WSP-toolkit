@@ -239,6 +239,40 @@
       "reference_commit": null,
       "gradient_permission": "none",
       "execution_scope": "standalone_programming_library; registry metadata does not itself enforce the CLI"
+    },
+    {
+      "id": "ties.effective_delta_mass_mean.v1",
+      "paper": "https://arxiv.org/abs/2306.01708",
+      "implementation_grade": "reference_mass_sign_mean_with_declared_coordinate_scope_and_density_endpoints",
+      "reference_commit": "44e7891fc84f3de7e4caa52664cd864ca3715e91",
+      "observation": "shared_base_effective_parameter_deltas",
+      "selection": "global_inclusive_magnitude_threshold_and_mass_sign",
+      "mutation": "new_dense_effective_delta_no_base_mutation",
+      "gradient_permission": "none",
+      "data_roles": [
+        "train",
+        "calibration",
+        "development"
+      ],
+      "preconditions": [
+        "matching_declared_base_identity_and_coordinate_scope",
+        "finite_effective_deltas_not_raw_lora_factors",
+        "density_in_[0,1]",
+        "explicit_zero_sign_policy"
+      ],
+      "postconditions": [
+        "source_deltas_unchanged",
+        "finite_CPU_FP32_output_with_matching_shapes",
+        "actual_retained_counts_recorded",
+        "output_is_delta_not_absolute_weight"
+      ],
+      "required_evidence": [
+        "source_training_and_base_provenance",
+        "pinned_reference_differential_comparison",
+        "coordinate_scope_and_endpoint_deviations",
+        "ordinary_mean_and_norm_controls",
+        "independent_task_evaluation_before_benefit_claim"
+      ]
     }
   ]
 }

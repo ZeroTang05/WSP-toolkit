@@ -8,8 +8,9 @@ from .cpu_kernel import CPUKernel
 from .programming_session import ProgrammingSession
 from .patching import ActivationPatchingStudy,replace_activation
 from .tool_api import tool_schemas,dispatch_tool
+from .merging import ties_merge
 
 __all__=['EditPolicy','WeightStore','contrast_direction','project_output_direction','compare_edits',
     'ForwardPolicy','BudgetLedger','ForwardService','PracticeSet',
     'input_hessian','sparsegpt_reconstruct','CPUKernel','ProgrammingSession',
-    'ActivationPatchingStudy','replace_activation','tool_schemas','dispatch_tool']
+    'ActivationPatchingStudy','replace_activation','tool_schemas','dispatch_tool','ties_merge']

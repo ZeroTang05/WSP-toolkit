@@ -29,6 +29,7 @@ bubblewrap. Models, practice sets and device scheduling are supplied by the host
 | Let a fresh model use the tools | programmer.run_programmer, source runner | Independent driver; full transcripts, live budgets and own-note context rollovers |
 | Test a local activation's causal effect | ActivationPatchingStudy | Zhang & Nanda, ICLR 2024; matched clean/corrupt/patched runs |
 | Compensate pruning damage | input_hessian, sparsegpt_reconstruct | SparseGPT, ICML 2023; declared local reconstruction adaptation |
+| Combine trained effective updates | ties_merge | TIES mass-sign disjoint mean; explicit reference tie rules and coordinate scope |
 
 ```python
 from weight_programming import WeightStore, project_output_direction
@@ -94,6 +95,9 @@ of downstream capability, efficiency or independent MIT-effect reproduction.
 For fresh model-programmer usage and experiment boundaries, see
 [model-programmer guide](docs/model-programmer.md). Its lifecycle checks run as
 `PYTHONPATH=src:tests python -m unittest test_programmer test_programming_session`.
+
+See [effective-delta merging](docs/ties-merging.md) for TIES method semantics.
+Its checks run as `PYTHONPATH=src:tests python -m unittest test_merging`.
 
 ## Sources and license
 
