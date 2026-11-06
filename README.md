@@ -99,6 +99,10 @@ For fresh model-programmer usage and experiment boundaries, see
 See [effective-delta merging](docs/ties-merging.md) for TIES method semantics.
 Its checks run as `PYTHONPATH=src:tests python -m unittest test_merging`.
 
+Full mathematical evaluation uses a separate host-owned path; see
+[final evaluation](docs/final-evaluation.md). Its generation-path check runs as
+`PYTHONPATH=src:tests python -m unittest test_math_evaluation`.
+
 ## Sources and license
 
 - [Sparks of Weight-Space Programming](https://rikiyat.github.io/blog/weight-space-programming/)
