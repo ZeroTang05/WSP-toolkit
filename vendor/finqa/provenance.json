@@ -1,0 +1,12 @@
+{
+  "repo": "https://github.com/czyssrs/FinQA",
+  "commit": "0f16e2867befa6840783e58be38c9efb9229d742",
+  "blobs": {
+    "evaluate.py": "4829a4ca58a5725fb3f7a46b3b23b7f7e848a512",
+    "LICENSE": "fb3b513238ba5ec7e0799cb1190ff30c759a5bdf"
+  },
+  "sha256": {
+    "evaluate.py": "845cd131cab843eceff256cf6d392978cc470a7da4a80107beb56027fdca5c13",
+    "LICENSE": "92c0e67bd762c15c07ba60de09558338315a8ebf99aac4f51f487179809ac087"
+  }
+}

@@ -1,0 +1,244 @@
+{
+  "version": 1,
+  "methods": [
+    {
+      "id": "taskvector.depth_scaled_lora.v1",
+      "paper": "https://arxiv.org/abs/2212.04089",
+      "implementation_grade": "declared_depthwise_adaptation_of_trained_task_vectors",
+      "reference_commit": null,
+      "observation": "trained_delta_and_training_derived_development_risk",
+      "selection": "four_normalized_depth_coefficients",
+      "mutation": "functional_scaled_trained_lora_delta",
+      "gradient_permission": "none",
+      "data_roles": [
+        "development"
+      ],
+      "preconditions": [
+        "verified_previously_trained_direction",
+        "matching_base_fingerprint",
+        "finite_four_band_coefficients_in_[0,1.5]"
+      ],
+      "postconditions": [
+        "base_weights_immutable",
+        "target_shapes_unchanged",
+        "failed_request_hooks_removed"
+      ],
+      "required_evidence": [
+        "trained_direction_provenance",
+        "depth_mapping_test",
+        "functional_delta_output_test",
+        "no_test_selection"
+      ]
+    },
+    {
+      "id": "wanda.row_unstructured.v1",
+      "paper": "https://arxiv.org/abs/2306.11695",
+      "implementation_grade": "reference_primitives_with_architecture_adaptation",
+      "reference_commit": "8e8fc87b4a2f9955baa7e76e64d5fce7fa8724a6",
+      "observation": "sum_token_squared_input_divided_by_sequence_count",
+      "selection": "per_output_row_stable_sort_floor_fraction",
+      "mutation": "zero_selected_weights",
+      "gradient_permission": "none",
+      "data_roles": [
+        "train",
+        "calibration"
+      ],
+      "preconditions": [
+        "finite_2d_linear_weight",
+        "finite_nonnegative_input_energy",
+        "fraction_in_[0,1)"
+      ],
+      "postconditions": [
+        "unchanged_shape",
+        "nonmasked_weights_exact",
+        "floor_width_times_fraction_masked_per_row"
+      ],
+      "required_evidence": [
+        "pinned_author_statistics_comparison",
+        "pinned_author_mask_comparison",
+        "tie_policy_test",
+        "artifact_tensor_verification"
+      ]
+    },
+    {
+      "id": "taylor.gated_mlp.first_order.v1",
+      "paper": "https://arxiv.org/abs/2305.11627",
+      "implementation_grade": "declared_mlp_only_adaptation",
+      "reference_commit": null,
+      "observation": "elementwise_absolute_weight_times_mean_calibration_gradient",
+      "selection": "sum_coupled_gate_up_rows_and_down_column",
+      "mutation": "coupled_mlp_structure_slice",
+      "gradient_permission": "observe",
+      "data_roles": [
+        "train",
+        "calibration"
+      ],
+      "preconditions": [
+        "bias_free_gated_mlp_dependency_group",
+        "same_unique_ordered_channel_index_in_all_coupled_matrices",
+        "legal_uniform_width_alignment"
+      ],
+      "postconditions": [
+        "legal_architecture",
+        "fp32_mask_slice_output_equivalence",
+        "independent_reload"
+      ],
+      "required_evidence": [
+        "derivation_and_adaptation_record",
+        "dependency_group_test",
+        "mask_slice_equivalence_test",
+        "artifact_tensor_verification"
+      ]
+    },
+    {
+      "id": "lora.functional_delta.v1",
+      "paper": "https://arxiv.org/abs/2106.09685",
+      "implementation_grade": "paper_parameterization_with_declared_training_recipe",
+      "reference_commit": null,
+      "observation": "supervised_task_loss_and_adapter_gradients",
+      "selection": "explicit_target_modules_and_rank",
+      "mutation": "functional_low_rank_delta",
+      "gradient_permission": "train",
+      "data_roles": [
+        "train"
+      ],
+      "preconditions": [
+        "matching_base_fingerprint",
+        "matching_factor_shapes",
+        "positive_rank",
+        "finite_factors_and_scale"
+      ],
+      "postconditions": [
+        "base_weights_immutable",
+        "functional_fp32_merge_equivalence",
+        "request_scope_isolated"
+      ],
+      "required_evidence": [
+        "frozen_base_training_test",
+        "functional_merge_test",
+        "base_fingerprint_test",
+        "exception_and_switch_isolation_test"
+      ]
+    },
+    {
+      "id": "taskvector.update_soup.v1",
+      "paper": "https://arxiv.org/abs/2203.05482",
+      "implementation_grade": "exact_effective_update_average_with_declared_LoRA_adaptation",
+      "observation": "verified_effective_trained_updates",
+      "selection": "predeclared_uniform_three_seed_weights",
+      "mutation": "concatenate_scaled_effective_update_factors",
+      "data_roles": [
+        "train"
+      ],
+      "preconditions": [
+        "same_base_fingerprint",
+        "identical_target_coordinates",
+        "finite_weights",
+        "effective_alpha_and_coefficient_absorbed"
+      ],
+      "postconditions": [
+        "real_arithmetic_update_sum_identity",
+        "base_weights_immutable",
+        "output_manifest_bound_to_source_updates"
+      ],
+      "required_evidence": [
+        "source_training_protocols",
+        "dense_update_algebra_comparison",
+        "source_tensor_fingerprints"
+      ],
+      "reference_commit": null,
+      "gradient_permission": "none",
+      "execution_scope": "standalone_programming_library; registry metadata does not itself enforce the CLI"
+    },
+    {
+      "id": "svd.delta_frobenius.v1",
+      "paper": "https://arxiv.org/abs/2403.07378",
+      "implementation_grade": "classical_truncated_SVD_delta_only_baseline_not_full_SVD_LLM",
+      "observation": "effective_update_small_core_spectrum",
+      "selection": "predeclared_rank_per_target",
+      "mutation": "QR_core_SVD_rank_truncation",
+      "data_roles": [
+        "train"
+      ],
+      "preconditions": [
+        "matching_factor_shapes",
+        "positive_legal_rank",
+        "finite_factors"
+      ],
+      "postconditions": [
+        "rank_at_most_budget",
+        "real_arithmetic_Frobenius_error_equals_singular_tail",
+        "base_weights_immutable"
+      ],
+      "required_evidence": [
+        "dense_SVD_objective_comparison",
+        "saved_factor_rounding_error",
+        "full_task_confirmation"
+      ],
+      "reference_commit": null,
+      "gradient_permission": "none",
+      "execution_scope": "standalone_programming_library; registry metadata does not itself enforce the CLI"
+    },
+    {
+      "id": "svd.delta_activation.v1",
+      "paper": "https://arxiv.org/abs/2403.07378",
+      "implementation_grade": "declared_fixed_activation_delta_reconstruction_adaptation_without_sequential_recovery",
+      "observation": "uncentered_latent_second_moment_under_source_variant",
+      "selection": "leading_output_subspace_at_predeclared_rank",
+      "mutation": "output_projection_then_factor_rebalance",
+      "data_roles": [
+        "calibration"
+      ],
+      "preconditions": [
+        "source_variant_and_calibration_bound",
+        "finite_PSD_latent_moment",
+        "legal_rank"
+      ],
+      "postconditions": [
+        "rank_at_most_budget",
+        "fixed_distribution_local_output_optimum_in_real_arithmetic",
+        "base_weights_immutable"
+      ],
+      "required_evidence": [
+        "moment_provenance",
+        "weighted_reconstruction_objective_comparison",
+        "singular_covariance_handling",
+        "full_task_confirmation"
+      ],
+      "reference_commit": null,
+      "gradient_permission": "none",
+      "execution_scope": "standalone_programming_library; registry metadata does not itself enforce the CLI"
+    },
+    {
+      "id": "shortgpt.domain_bi_depth.v1",
+      "paper": "https://arxiv.org/abs/2403.03853",
+      "implementation_grade": "BI_formula_and_layer_selection_with_domain_sampling_and_architecture_adaptation",
+      "observation": "mean_example_mean_token_one_minus_hidden_cosine",
+      "selection": "lowest_BI_at_predeclared_layer_budget",
+      "mutation": "decoder_layer_subsequence_with_cache_index_rebinding",
+      "data_roles": [
+        "calibration"
+      ],
+      "preconditions": [
+        "supported_Qwen3_or_Llama_decoder",
+        "finite_layer_scores",
+        "sorted_unique_original_kept_indices",
+        "at_least_one_retained_layer"
+      ],
+      "postconditions": [
+        "execution_uses_selected_original_blocks",
+        "cache_indices_match_execution_order",
+        "restored_source_graph_after_context"
+      ],
+      "required_evidence": [
+        "calibration_protocol",
+        "one_layer_causal_response_map",
+        "equal_layer_budget_random_and_tail_controls",
+        "full_task_confirmation"
+      ],
+      "reference_commit": null,
+      "gradient_permission": "none",
+      "execution_scope": "standalone_programming_library; registry metadata does not itself enforce the CLI"
+    }
+  ]
+}

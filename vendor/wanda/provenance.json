@@ -1,0 +1,10 @@
+{
+  "repository": "https://github.com/locuslab/wanda",
+  "commit": "8e8fc87b4a2f9955baa7e76e64d5fce7fa8724a6",
+  "license": "MIT",
+  "sha256": {
+    "LICENSE": "bab8e35dd973ef7b3f65b8865dfaae3e3915e72ae9c979423aef80acbb318518",
+    "prune_reference.py": "3365c5f098674ad86238dbcd2d4b7f64ef1565af7868c060d027e7934fcb00f4",
+    "layerwrapper.py": "5d2d01017407f61052a5adb11d8a9590f52147f9609ad01a141ae61ccbf9edd2"
+  }
+}

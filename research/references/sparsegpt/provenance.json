@@ -1,0 +1,19 @@
+{
+  "repository": "IST-DASLab/sparsegpt",
+  "paper": "https://arxiv.org/abs/2301.00774v3",
+  "files": [
+    {
+      "local": "research/references/sparsegpt/sparsegpt.py",
+      "sha": "1b79efc28cd48910d07b000916208977a9929e4b",
+      "url": "https://github.com/IST-DASLab/sparsegpt/blob/master/sparsegpt.py",
+      "sha256": "1735493dec60e4792a6d5a8d7d5acb2baa1392f8887d235c050c3b3b5f0a3d69"
+    },
+    {
+      "local": "src/weight_programming/licenses/sparsegpt-LICENSE",
+      "sha": "261eeb9e9f8b2b4b0d119366dda99c6fd7d35c64",
+      "url": "https://github.com/IST-DASLab/sparsegpt/blob/master/LICENSE",
+      "sha256": "c95bae1d1ce0235ecccd3560b772ec1efb97f348a79f0fbe0a634f0c2ccefe2c"
+    }
+  ],
+  "adaptation": "src/weight_programming/reconstruction.py; see module docstring for declared changes"
+}
