@@ -31,6 +31,10 @@ class CPUKernel:
             raise ValueError('Model, practice, work and controller must be disjoint trees')
         work.mkdir(parents=True,exist_ok=True);control.mkdir(parents=True,exist_ok=True)
         if any(control.iterdir()):raise FileExistsError('New controller directory required; no implicit budget reset')
+        self.exports=control/'observations';self.exports.mkdir()
+        observation_mount=work/'observations'
+        if observation_mount.is_symlink():raise ValueError('Observation mount must not be a symlink')
+        observation_mount.mkdir(exist_ok=True)
         self.control=control;self.limit=executions;self.seconds=seconds;self.count=0;self.dead=False
         runtime=Path(python or os.sys.executable).absolute().parent.parent
         if not (runtime/'pyvenv.cfg').is_file():raise ValueError('Explicit virtualenv Python required')
@@ -45,6 +49,7 @@ class CPUKernel:
             '--dir','/etc','--dir','/opt','--dir','/toolkit',
             '--ro-bind',str(runtime),'/runtime','--ro-bind',str(package),'/toolkit/weight_programming',
             '--ro-bind',str(model),'/model','--ro-bind',str(practice),'/practice','--bind',str(work),'/work',
+            '--ro-bind',str(self.exports),'/work/observations',
             '--setenv','PATH','/runtime/bin:/usr/bin:/bin','--setenv','PYTHONPATH','/toolkit',
             '--setenv','HOME','/tmp','--setenv','CUDA_VISIBLE_DEVICES','',
             '--setenv','HF_HUB_OFFLINE','1','--setenv','TRANSFORMERS_OFFLINE','1',

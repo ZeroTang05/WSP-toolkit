@@ -36,11 +36,13 @@ class ProgrammingSession:
     def forward(self,request):
         with self._lock:
             result=self.service.request(request)
-            source=Path(result['artifact_dir']);target=self.work/'observations'/source.name
+            source=Path(result['artifact_dir']);target=self.kernel.exports/source.name
             if target.exists():raise FileExistsError('Observation already exported into workspace')
             target.parent.mkdir(exist_ok=True)
             # Each request has passed the service return-size cap. Preserve the
             # authoritative copy and hashes outside the writable kernel mount.
+            # The export tree is a separate read-only mount: kernel-created
+            # symlinks cannot redirect host writes or alter raw evidence.
             shutil.copytree(source,target)
             hashes={}
             for file in source.iterdir():

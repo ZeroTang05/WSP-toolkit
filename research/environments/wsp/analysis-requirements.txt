@@ -1,0 +1,5 @@
+# Original CPU analysis stack, in the separate Qwen3.5 WSP virtual environment.
+# numpy/torch/transformers/safetensors/math grading are pinned by its runtime.
+scipy==1.15.3
+scikit-learn==1.7.2
+pandas==2.3.3

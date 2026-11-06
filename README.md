@@ -12,6 +12,7 @@ Python 3.10 or newer. Use separate environments for the pinned model backends.
 python -m pip install .                    # tensor and reconstruction tools
 python -m pip install '.[qwen3,math]'       # Transformers 4.57.6: Qwen3 / Llama
 python -m pip install '.[qwen35,math]'      # Transformers 5.3.0: Qwen3.5
+python -m pip install '.[analysis]'         # original CPU numerical stack
 ```
 
 Qwen3.5 requires Torch >=2.4. Select the appropriate PyTorch build for your
@@ -25,6 +26,7 @@ bubblewrap. Models, practice sets and device scheduling are supplied by the host
 | Read and propose direct edits | WeightStore, EditPolicy, directional projections | MIT WSP experiment-8 contract; explicit tensor algebra |
 | Observe behavior and internal states | ForwardService, pinned HF backends, budget ledger | MIT WSP generation / teacher-forced interface |
 | Analyze in a persistent CPU workspace | CPUKernel, ProgrammingSession, tool_schemas, dispatch_tool | Original CPU-kernel + forward-service separation |
+| Let a fresh model use the tools | programmer.run_programmer, source runner | Independent driver; full transcripts, live budgets and own-note context rollovers |
 | Test a local activation's causal effect | ActivationPatchingStudy | Zhang & Nanda, ICLR 2024; matched clean/corrupt/patched runs |
 | Compensate pruning damage | input_hessian, sparsegpt_reconstruct | SparseGPT, ICML 2023; declared local reconstruction adaptation |
 
@@ -88,6 +90,10 @@ PYTHONPATH=src:tests python -m unittest test_qwen35_backend
 Kernel tests need Linux bubblewrap and a virtualenv Python. Verification covers
 the stated interfaces and local numerical properties; it is not a certificate
 of downstream capability, efficiency or independent MIT-effect reproduction.
+
+For fresh model-programmer usage and experiment boundaries, see
+[model-programmer guide](docs/model-programmer.md). Its lifecycle checks run as
+`PYTHONPATH=src:tests python -m unittest test_programmer test_programming_session`.
 
 ## Sources and license
 

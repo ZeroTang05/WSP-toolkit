@@ -35,6 +35,9 @@ class SessionTests(unittest.TestCase):
                 torch.testing.assert_close(model.state_dict()[name],before)
                 result=session.execute("import numpy as np; print(np.load('/work/observations/request_0002/mlp_0.npy').shape)")
                 self.assertEqual(result['output'].strip(),'(1, 1, 24)')
+                result=session.execute("open('/work/observations/request_0002/meta.json','w')")
+                self.assertEqual(result['status'],'error')
+                self.assertIn('Read-only',result['output'])
                 self.assertEqual(session.service.ledger.summary()['successful'],2)
 
 
