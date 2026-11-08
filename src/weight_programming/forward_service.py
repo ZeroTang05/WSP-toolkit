@@ -57,13 +57,14 @@ def summarize_generations(rows):
         generation_seconds=sum(r['generation_seconds'] for r in rows),input_tokens=sum(r['input_tokens'] for r in rows),output_tokens=sum(r['output_tokens'] for r in rows))
 
 
-def paired_comparison(original,edited):
+def paired_comparison(original,edited,*,require_same_prompt_format=True):
     key=lambda r:(r['id'],r['sample'])
     a={key(r):r for r in original};b={key(r):r for r in edited}
     if set(a)!=set(b) or len(a)!=len(original) or len(b)!=len(edited):raise ValueError('Mismatched paired generations')
     differences={};rescued=regressed=0
     for item in a:
-        if a[item]['seed']!=b[item]['seed'] or a[item]['prompt_sha256']!=b[item]['prompt_sha256']:raise ValueError('Different prompt/random seed in pair')
+        if a[item]['seed']!=b[item]['seed'] or (require_same_prompt_format and a[item]['prompt_sha256']!=b[item]['prompt_sha256']):
+            raise ValueError('Different prompt/random seed in pair')
         if a[item].get('correct') is None or b[item].get('correct') is None:continue
         delta=int(b[item]['correct'])-int(a[item]['correct']);differences.setdefault(item[0],[]).append(delta)
         rescued+=delta>0;regressed+=delta<0
@@ -87,10 +88,16 @@ class ForwardService:
             grader=grader.identity if grader is not None else None,source_sha256=sources)
         self.ledger=BudgetLedger(self.work_dir/'budget.json',self.policy,self.binding)
 
-    def request(self,raw):
+    def request(self,raw,*,variant_snapshot=None):
         with self._lock:
             started=time.perf_counter();request=validate_request(raw,self.policy,self.backend.num_layers,self.backend.full_attention_layers)
-            snapshot=self.store.snapshot(with_edits=request['model']!='original');original=self.store.snapshot(with_edits=False)
+            original=self.store.snapshot(with_edits=False)
+            if variant_snapshot is not None:
+                if request['model']=='original' or variant_snapshot['base_id']!=original['base_id']:
+                    raise ValueError('Explicit candidate snapshot requires its own base and an edited run')
+                snapshot=variant_snapshot
+            else:
+                snapshot=original if request['model']=='original' else self.store.snapshot(with_edits=True)
             if request['type']=='teacher_forced':prepared=self.backend.prepare_teacher(request,self.policy)
             else:prepared=self.backend.prepare_generation(self.practice.generation_items(request),request,self.policy)
             attempt=self.ledger.begin(request,snapshot['variant_id']);stage=self.work_dir/f'.request_{attempt:04d}.partial';output=self.work_dir/f'request_{attempt:04d}'

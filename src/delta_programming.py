@@ -60,15 +60,18 @@ def weighted_truncate(A,B,C,rank):
         objective='local source-variant activation reconstruction; no sequential recovery update')
 
 
-def emit(output,base,pairs,method,details):
+def emit(output,base,pairs,method,details,*,method_provenance=None):
+    """将有效低秩更新保存为缩放为 1 的通用因子。"""
     targets={};data={}
     for name,(A,B) in pairs.items():
         A=A.float().contiguous();B=B.float().contiguous();rank=A.shape[0]
         targets[name]=dict(in_features=A.shape[1],out_features=B.shape[0],rank=rank,alpha=rank)
         data[name+'.A']=A;data[name+'.B']=B
-    return write_delta(data,targets,base,output,1.,dict(method=method,details=details,
-        papers=['https://arxiv.org/abs/2212.04089','https://arxiv.org/abs/2203.05482','https://arxiv.org/abs/2403.07378'],
-        implementation_grade='exact update concatenation / declared low-rank reconstruction adaptation'))
+    if method_provenance is None:
+        method_provenance = dict(
+            papers=['https://arxiv.org/abs/2212.04089','https://arxiv.org/abs/2203.05482','https://arxiv.org/abs/2403.07378'],
+            implementation_grade='exact update concatenation / declared low-rank reconstruction adaptation')
+    return write_delta(data, targets, base, output, 1., dict(method=method, details=details, **method_provenance))
 
 
 def load_effective(directory):

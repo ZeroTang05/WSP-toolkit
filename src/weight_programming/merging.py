@@ -10,6 +10,32 @@ import math
 import torch
 
 
+def dare_drop(deltas, drop_probability, seed):
+    """按 DARE 用独立伯努利掩码稀疏化有效增量，再按保留概率重缩放。"""
+    if not math.isfinite(drop_probability) or not 0 <= drop_probability < 1:
+        raise ValueError("DARE drop probability must be in [0, 1)")
+    keep_probability = 1.0 - drop_probability
+    generator = torch.Generator(device="cpu").manual_seed(seed)
+    outputs, counts = [], []
+    for delta in deltas:
+        sparse = {}
+        retained = original_nonzero = retained_nonzero = size = 0
+        for name in sorted(delta):
+            value = delta[name]
+            keep = torch.bernoulli(torch.full_like(value, keep_probability), generator=generator).bool()
+            sparse[name] = value.masked_fill(~keep, 0) / keep_probability
+            nonzero = value.ne(0)
+            retained += int(keep.sum())
+            original_nonzero += int(nonzero.sum())
+            retained_nonzero += int((nonzero & keep).sum())
+            size += value.numel()
+        outputs.append(sparse)
+        counts.append({"parameters": size, "kept_mask": retained, "realized_keep_fraction": retained / size,
+                       "original_nonzero": original_nonzero, "retained_nonzero": retained_nonzero})
+    return outputs, {"drop_probability": drop_probability, "rescale": 1 / keep_probability,
+                     "seed": seed, "sources": counts}
+
+
 @torch.no_grad()
 def ties_merge(deltas,base_ids,*,density=.2,zero_sign='reference_majority'):
     """Return (dense effective delta mapping, evidence), CPU FP32.

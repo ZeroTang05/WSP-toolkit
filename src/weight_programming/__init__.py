@@ -9,8 +9,11 @@ from .programming_session import ProgrammingSession
 from .patching import ActivationPatchingStudy,replace_activation
 from .tool_api import tool_schemas,dispatch_tool
 from .merging import ties_merge
+from .inspection import InspectionTools, open_inspection
+from .model_registry import register_model
 
 __all__=['EditPolicy','WeightStore','contrast_direction','project_output_direction','compare_edits',
     'ForwardPolicy','BudgetLedger','ForwardService','PracticeSet',
     'input_hessian','sparsegpt_reconstruct','CPUKernel','ProgrammingSession',
-    'ActivationPatchingStudy','replace_activation','tool_schemas','dispatch_tool','ties_merge']
+    'ActivationPatchingStudy','replace_activation','tool_schemas','dispatch_tool','ties_merge',
+    'InspectionTools','open_inspection','register_model']

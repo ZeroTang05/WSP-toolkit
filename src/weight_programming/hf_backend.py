@@ -53,6 +53,27 @@ class HuggingFaceBackend:
             attention_implementation=model.config._attn_implementation,
             note='Pinned independent HF implementation; not a vLLM equivalence claim or Qwen3.5 adapter')
 
+    def observation_sites(self):
+        """登记本后端实际能采集的站点、运行模式和数组轴。"""
+        sites = {}
+        both = ["teacher_forced", "generate"]
+        channel_axes = ["sample", "token", "channel"]
+
+        def add(site_id, kind, index, width, modes, axes):
+            sites[site_id] = {"site_id": site_id, "kind": kind, "index": index,
+                              "width": width, "modes": modes, "axes": axes}
+
+        add("embedding.out", "hidden", 0, self.hidden_size, both, channel_axes)
+        for layer in range(self.num_layers):
+            add(f"block.{layer}.residual_out", "hidden", layer + 1, self.hidden_size, both, channel_axes)
+            add(f"block.{layer}.mlp.down_proj.input", "mlp", layer, self.mlp_width,
+                ["teacher_forced"], channel_axes)
+            add(f"block.{layer}.mlp.out", "mlp_out", layer, self.hidden_size, ["teacher_forced"], channel_axes)
+        for layer in self.full_attention_layers:
+            add(f"block.{layer}.attention.probs", "attention", layer, self.num_heads,
+                ["teacher_forced"], ["sample", "head", "query_token", "key_token"])
+        return sites
+
     def encode(self,text):
         ids=self.tokenizer.encode(text,add_special_tokens=False)
         if not ids:raise ValueError('Empty tokenized text')
@@ -70,18 +91,27 @@ class HuggingFaceBackend:
     @torch.no_grad()
     def _activate_unlocked(self,snapshot):
         backups={}
+        changed_parameters=set()
         try:
             for name,value in snapshot['values'].items():
                 if name not in self.parameters:raise ValueError('Editable source is not a model parameter')
                 parameter=self.parameters[name]
-                if parameter.dtype!=self.store._native(name).dtype:raise ValueError('Edited parameter execution precision differs from source precision')
+                if snapshot.get('native_patch'):
+                    # 已物化的 FP16/BF16 补丁可无损提升到 FP32 执行。
+                    if parameter.dtype not in (value.dtype,torch.float32):
+                        raise ValueError('Native patch cannot be represented in the execution precision')
+                    if id(parameter) in changed_parameters:
+                        continue
+                    changed_parameters.add(id(parameter))
+                elif parameter.dtype!=self.store._native(name).dtype:
+                    raise ValueError('Edited parameter execution precision differs from source precision')
                 backups[name]=parameter.detach().cpu().clone();parameter.copy_(value.to(parameter.device,dtype=parameter.dtype))
             yield
         finally:
             for name,value in backups.items():self.parameters[name].copy_(value.to(self.parameters[name].device))
 
     @contextlib.contextmanager
-    def _observe(self,hidden,mlp,attention):
+    def _observe(self,hidden,mlp,attention,mlp_out=()):
         captured={};handles=[];configs={}
         def save(key,value):captured[key]=value.detach().float().cpu().clone()
         def post(key):
@@ -94,6 +124,8 @@ class HuggingFaceBackend:
             for layer in mlp:
                 def pre(module,args,key='mlp_'+str(layer)):save(key,args[0])
                 handles.append(self.layers[layer].mlp.down_proj.register_forward_pre_hook(pre))
+            for layer in mlp_out:
+                handles.append(self.layers[layer].mlp.register_forward_hook(post('mlp_out_'+str(layer))))
             for layer in attention:
                 module=self.layers[layer].self_attn;config=module.config
                 configs.setdefault(id(config),(config,config._attn_implementation));config._attn_implementation='eager'
@@ -107,9 +139,9 @@ class HuggingFaceBackend:
             for config,implementation in configs.values():config._attn_implementation=implementation
 
     @torch.inference_mode()
-    def _read(self,ids,hidden,mlp,attention,scores):
+    def _read(self,ids,hidden,mlp,attention,scores,mlp_out=()):
         tokens=torch.tensor([ids],device=self.device)
-        with self._observe(hidden,mlp,attention) as captured:
+        with self._observe(hidden,mlp,attention,mlp_out) as captured:
             output=self.model(input_ids=tokens,attention_mask=torch.ones_like(tokens),use_cache=False,logits_to_keep=0 if scores else 1)
         return output.logits[0] if scores else None,captured
 
@@ -126,6 +158,7 @@ class HuggingFaceBackend:
             shapes['topk_ids']=((n,L,outputs['topk']),'int64');shapes['topk_logprobs']=((n,L,outputs['topk']),'float32')
         for layer in outputs['hidden_states']:shapes['hidden_'+str(layer)]=((n,L,self.hidden_size),'float32')
         for layer in outputs['mlp_act']:shapes['mlp_'+str(layer)]=((n,L,self.mlp_width),'float32')
+        for layer in outputs.get('mlp_out',()):shapes['mlp_out_'+str(layer)]=((n,L,self.hidden_size),'float32')
         for layer in outputs['attn_layers']:shapes['attention_'+str(layer)]=((n,self.num_heads,L,L),'float32')
         payload=sum(int(np.prod(shape))*np.dtype(dtype).itemsize for shape,dtype in shapes.values())
         if payload+1_048_576>policy.max_return_bytes:raise ValueError('Padded return artifact exceeds byte limit')
@@ -140,7 +173,8 @@ class HuggingFaceBackend:
             arrays[name]=array
         for row,ids in enumerate(prepared['sequences']):
             length=len(ids);arrays['lengths'][row]=length;arrays['input_ids'][row,:length]=ids;arrays['valid_tokens'][row,:length]=True
-            logits,captured=self._read(ids,outputs['hidden_states'],outputs['mlp_act'],outputs['attn_layers'],outputs['token_logprobs'] or outputs['topk']>0)
+            logits,captured=self._read(ids,outputs['hidden_states'],outputs['mlp_act'],outputs['attn_layers'],
+                                       outputs['token_logprobs'] or outputs['topk']>0, outputs.get('mlp_out',()))
             for key,value in captured.items():
                 if key.startswith('attention_'):arrays[key][row,:,:length,:length]=value[0].numpy()
                 else:arrays[key][row,:length]=value[0].numpy()
@@ -167,7 +201,8 @@ class HuggingFaceBackend:
             alignment=dict(token_logprobs='At token t: log p(input[t]|input[:t]); first token and padding NaN',
                 topk='At query position t: normalized next-token distribution; padding IDs -1/logprobs NaN',
                 hidden='0 is token embedding, l>0 is raw decoder block l-1 output before final model norm',
-                mlp='Input of down_proj, i.e. gated intermediate activation',attention='Eager full-attention probabilities; padded query/key positions zero',
+                mlp='Input of down_proj, i.e. gated intermediate activation',mlp_out='Output of MLP before residual addition',
+                attention='Eager full-attention probabilities; padded query/key positions zero',
                 padding='Right padded; consult lengths/valid_tokens'))
 
     def prepare_generation(self,items,request,policy):

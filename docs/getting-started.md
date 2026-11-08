@@ -10,12 +10,13 @@ Use Python 3.10 or newer in a virtual environment. Start from the [repository](h
 |---|---|
 | Read, edit, merge, or reconstruct weight matrices on CPU | `python -m pip install .` |
 | Run Qwen3 or Llama with the model adapter | `python -m pip install '.[qwen3,math]'` |
+| Connect a local MCP client to Qwen3 or Llama | `python -m pip install '.[qwen3,mcp]'` |
 | Run Qwen3.5 with the model adapter | `python -m pip install '.[qwen35,math]'` |
 | Run the model programmer with its numerical analysis libraries | `python -m pip install '.[qwen35,math,analysis]'` |
 
 The Qwen3 and Qwen3.5 adapters use different pinned Transformers versions. Install each in its own environment. Qwen3.5 requires PyTorch 2.4 or newer. The isolated analysis workspace requires Linux and Bubblewrap, which creates a restricted filesystem for Python. The provided full MATH-500 runner uses a CUDA GPU. [Model programmer setup](model-programmer.md) · [Full evaluation setup](final-evaluation.md)
 
-The [release wheel](https://github.com/ZeroTang05/WSP-toolkit/releases/tag/v0.4.0a4.dev0) is an earlier prerelease. Its Python distribution is named `idea4-weightlab`, and the import path is `weight_programming`. Use the source installation for the current model programmer, TIES, and final evaluation guides.
+The Python distribution is `idea4-weightlab` and the import path is `weight_programming`. The MCP and shared Python tools use the current source installation. [Earlier prerelease wheel](https://github.com/ZeroTang05/WSP-toolkit/releases/tag/v0.4.0a4.dev0)
 
 ## 2. Inspect a real checkpoint
 
@@ -35,6 +36,7 @@ For a controlled comparison, freeze the edit and keep the questions, prompt, sam
 
 ## 4. Find the right entry point
 
+- **MCP.** Run `wsp-mcp` as a local standard-input/output process from an MCP client. The same tool registry is available through `open_inspection()` in Python. [Setup, permissions, and examples](mcp-tools.md)
 - **Python API.** The `weight_programming` package contains the reusable tools for weight operations, model observations, and evaluation.
 - **Research scripts.** The `src/run_*.py` scripts run specific experiments and expect the models, data views, or trained updates described in their command help. Use `PYTHONPATH=src python src/run_ties_study.py --help` to see one example.
 - **Method contracts.** The files under `contracts/` and the tool permissions guide describe how each operation relates to the research method. [Tool permissions](tool-permissions.md)

@@ -13,7 +13,7 @@ from safetensors.torch import save_file
 from weightlab import Lab,write_json
 from delta_bank import DeltaBank,fingerprint,sha
 from delta_programming import load_effective,weighted_truncate,emit,describe,norm,residual
-from depth_programming import choose_layers,depth_variant
+from depth_programming import block_influence,choose_layers,depth_variant
 from prepare_training_views import read_jsonl
 from search_metrics import losses
 
@@ -42,7 +42,7 @@ def collect(lab,rows,soup):
     for i,layer in enumerate(lab.layers):
         def hook(module,args,output,index=i):
             value=output[0] if isinstance(output,(tuple,list)) else output
-            influence[index].add_(1-torch.nn.functional.cosine_similarity(args[0].float(),value.float(),dim=-1).mean())
+            influence[index].add_(block_influence(args[0],value).mean())
         handles.append(layer.register_forward_hook(hook))
     def forward(row):
         ids=lab.tokenizer.encode(lab.prefix(row),add_special_tokens=False)+lab.tokenizer.encode(row['answer'],add_special_tokens=False)+[lab.tokenizer.eos_token_id]

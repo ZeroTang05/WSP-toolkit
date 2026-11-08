@@ -8,6 +8,7 @@ API checks do not constitute a sandbox against arbitrary Python execution.
 from dataclasses import asdict,dataclass
 import hashlib
 import json
+from math import prod
 from pathlib import Path
 import threading
 import torch
@@ -20,6 +21,17 @@ def sha(path):
     with open(path,'rb') as stream:
         for block in iter(lambda:stream.read(8*1024*1024),b''):h.update(block)
     return h.hexdigest()
+
+
+def slice_region(shape, region, *, max_values=None):
+    """将各轴的半开区间转换为张量切片。"""
+    if len(region) != len(shape) or any(type(start) is not int or type(stop) is not int
+                                        or not 0 <= start < stop <= length
+                                        for (start, stop), length in zip(region, shape)):
+        raise ValueError("Region must specify a valid half-open interval on every axis")
+    if max_values is not None and prod(stop - start for start, stop in region) > max_values:
+        raise ValueError(f"Select a region of at most {max_values} values")
+    return tuple(slice(start, stop) for start, stop in region)
 
 
 @dataclass(frozen=True)
@@ -71,11 +83,27 @@ class WeightStore:
     def _commit(self):
         temporary=self._path.with_suffix('.json.tmp');temporary.write_text(json.dumps(self._manifest,indent=2));temporary.replace(self._path)
 
-    def _native(self,name):
+    def _source_path(self,name):
         if name not in self._locations:raise KeyError(name)
-        stat=self._locations[name].stat()
-        if (stat.st_size,stat.st_mtime_ns)!=self._source_stats[str(self._locations[name])]:raise ValueError('Source checkpoint changed since opening')
-        with safe_open(str(self._locations[name]),framework='pt',device='cpu') as stream:return stream.get_tensor(name)
+        path=self._locations[name];stat=path.stat()
+        if (stat.st_size,stat.st_mtime_ns)!=self._source_stats[str(path)]:raise ValueError('Source checkpoint changed since opening')
+        return path
+
+    def _native(self,name):
+        with safe_open(str(self._source_path(name)),framework='pt',device='cpu') as stream:return stream.get_tensor(name)
+
+    def tensor_info(self, name):
+        """读取权重文件的形状和原始精度，无需载入数值。"""
+        path = self._source_path(name)
+        with safe_open(str(path), framework="pt", device="cpu") as stream:
+            view = stream.get_slice(name)
+            return {"name": name, "shape": view.get_shape(), "dtype": view.get_dtype(), "shard": path.name}
+
+    def read_native_slice(self, name, region):
+        """按原精度直接读取检查点中的一小块权重。"""
+        with safe_open(str(self._source_path(name)), framework="pt", device="cpu") as stream:
+            view = stream.get_slice(name)
+            return view[slice_region(view.get_shape(), region, max_values=4096)]
 
     @torch.no_grad()
     def load_original(self,name):return self._native(name).float().clone()

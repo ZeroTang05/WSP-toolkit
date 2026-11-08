@@ -9,16 +9,18 @@ description = "Paper-derived model inspection, pruning, and parameter-edit exper
 readme = "README.md"
 license = {file = "LICENSE"}
 requires-python = ">=3.10"
-dependencies = ["torch>=2.2", "safetensors==0.8.0", "numpy<2"]
+dependencies = ["torch>=2.2", "safetensors==0.8.0", "numpy<2", "jsonschema>=4.25,<5"]
 
 [project.optional-dependencies]
 qwen3 = ["transformers==4.57.6"]
 qwen35 = ["torch>=2.4", "transformers==5.3.0"]
+mcp = ["mcp>=2.3,<3"]
+gradients = ["captum>=0.8,<1"]
 benchmark = ["lm_eval==0.4.9.2", "transformers==4.57.6"]
 peft = ["peft==0.21.2"]
 math = ["math-verify==0.9.0", "latex2sympy2_extended==1.11.0", "antlr4-python3-runtime==4.13.2"]
 test = ["jsonschema==4.25.1"]
-analysis = ["scipy==1.15.3", "scikit-learn==1.7.2", "pandas==2.3.3", "sympy==1.13.1", "networkx==3.4.2"]
+analysis = ["scipy==1.15.3", "scikit-learn==1.7.2", "pandas==2.3.3", "sympy==1.13.1", "networkx==3.4.2", "matplotlib>=3.10,<4"]
 
 [project.scripts]
 weightlab = "weightlab:main"
@@ -29,11 +31,12 @@ weightlab-optimize = "optimize_public_v2:main"
 weightlab-optimize-budget = "optimize_public_budget:main"
 weightlab-finqa = "finqa_workflow_v2:main"
 weightlab-profile = "profile_variant:main"
+wsp-mcp = "weight_programming.mcp_server:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
 packages = ["weight_programming"]
-py-modules = ["weightlab", "paper_methods", "verify_artifacts", "verify_paper", "verify_tokenizers", "select_candidate", "summarize", "contract_registry", "delta_bank", "finqa_views", "prepare_training_views", "specialize", "benchmark_runner", "token_length_audit", "finqa_executor", "finqa_roles", "finqa_workflow", "mask_bundle", "prune_public", "task_plan", "search_policies", "optimize_public", "analyze_public", "analyze_delta", "capacity_controls", "structure_bundle", "prune_structured", "search_v2", "search_metrics", "optimize_public_v2", "audit_search", "finqa_workflow_v2", "profile_variant", "peft_bank", "peft_reference_smoke", "optimize_public_budget", "analyze_model_trends", "audit_finqa_run", "audit_finqa_prompts"]
+py-modules = ["weightlab", "paper_methods", "verify_artifacts", "verify_paper", "verify_tokenizers", "select_candidate", "summarize", "contract_registry", "delta_bank", "finqa_views", "prepare_training_views", "specialize", "benchmark_runner", "token_length_audit", "finqa_executor", "finqa_roles", "finqa_workflow", "mask_bundle", "prune_public", "task_plan", "search_policies", "optimize_public", "analyze_public", "analyze_delta", "delta_programming", "depth_programming", "capacity_controls", "structure_bundle", "prune_structured", "search_v2", "search_metrics", "optimize_public_v2", "audit_search", "finqa_workflow_v2", "profile_variant", "peft_bank", "peft_reference_smoke", "optimize_public_budget", "analyze_model_trends", "audit_finqa_run", "audit_finqa_prompts"]
 
 [tool.setuptools.data-files]
 "share/idea4-weightlab/contracts" = ["contracts/methods.json"]

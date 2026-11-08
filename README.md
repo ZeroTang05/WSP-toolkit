@@ -4,18 +4,19 @@
 
 WSP stands for **Weight-Space Programming**. The toolkit lets you read model weights and internal activations, make a targeted change, and compare the resulting behavior with the base model. Edits are saved separately, with a fingerprint that ties each edit to its source checkpoint.
 
-[中文说明](README.zh-CN.md) · [Getting started](docs/getting-started.md) · [Benchmarks](docs/benchmarks.md) · [Releases](https://github.com/ZeroTang05/WSP-toolkit/releases)
+[中文说明](README.zh-CN.md) · [Getting started](docs/getting-started.md) · [MCP and Python tools](docs/mcp-tools.md) · [Benchmarks](docs/benchmarks.md) · [Releases](https://github.com/ZeroTang05/WSP-toolkit/releases)
 
 ## What you can do
 
 | Goal | Tool |
 |---|---|
-| Read and edit individual weight matrices | `WeightStore` reads safetensors checkpoints and saves checked replacement tensors |
-| See how a model processes an input | `ForwardService` runs budgeted generation and records selected activations, token scores, and attention maps |
-| Check what a component contributes | `ActivationPatchingStudy` replaces selected activations and measures the output change |
-| Explore edits with a model as the programmer | `ProgrammingSession` provides an isolated CPU workspace and records tool calls and budgets |
-| Combine trained updates or repair pruning damage | `ties_merge` combines aligned parameter updates. `sparsegpt_reconstruct` compensates for removed weights within a layer |
-| Compare a frozen edit with its base | The host-side evaluator records generated answers, accuracy, truncation, and repetition statistics |
+| Read weights and save reversible edits | Read tensor slices and create, replay, export, or revert patches |
+| Observe a model processing text | Record activations and attention. Use heatmaps, layer predictions, attribution, or sparse feature dictionaries to inspect the results |
+| Measure what an internal component changes | Temporarily replace or zero selected activations and compare the model's output |
+| Compare models or compress updates | Compare weight changes, representations, and behavior. Merge updates with TIES or DARE, or compress them with a low-rank approximation |
+| Make a smaller model or train an update | Export a checkpoint with fewer layers or channels, or train a LoRA adapter on host-registered data |
+
+The local Model Context Protocol (MCP) server and Python registry use the same tool definitions. Model adapters report which internal locations are available for each checkpoint. [Tool reference and examples](docs/mcp-tools.md)
 
 The original Weight-Space Programming experiment inspired the isolated workspace and budgeted model tools. Activation patching, pruning, and update merging have their own method references and experiment settings. [Original research](https://rikiyat.github.io/blog/weight-space-programming/) · [Tool permissions and methods](docs/tool-permissions.md)
 
@@ -30,16 +31,16 @@ Use Python 3.10 or later. Install from source to use the interfaces described he
 ```sh
 git clone https://github.com/ZeroTang05/WSP-toolkit.git
 cd WSP-toolkit
-python -m pip install .
+python -m pip install '.[qwen3,mcp]'
 ```
 
-Start with a local safetensors checkpoint and inspect one weight matrix on the CPU. The following command uses the first MLP output matrix in a Qwen3 checkpoint.
+Use a local Qwen3 or Llama-family safetensors checkpoint. The example runs on a CPU and checks tool discovery, weight slices, and activations through both interfaces.
 
 ```sh
-python examples/inspect_weight.py --model /path/to/Qwen3-0.6B --edit-dir ./weight-edits
+python examples/mcp_inspection.py --model /path/to/checkpoint
 ```
 
-The example prints the matrix name, dimensions, and norm. The norm is a single number that summarizes the size of all its values. For model runs, choose the environment that matches your checkpoint. [Installation and examples](docs/getting-started.md)
+The examples were exercised with SmolLM2-135M-Instruct. The installation guide lists model environments and a direct weight reader. [Getting started](docs/getting-started.md) · [SmolLM2 checkpoint](https://huggingface.co/HuggingFaceTB/SmolLM2-135M-Instruct)
 
 | Guide | What it covers |
 |---|---|

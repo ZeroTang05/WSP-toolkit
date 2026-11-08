@@ -84,11 +84,12 @@ def validate_request(request,policy,num_layers,full_attention_layers):
                     if not isinstance(message,dict) or set(message)!={'role','content'} or message['role'] not in ['system','user','assistant'] or not isinstance(message['content'],str):raise ValueError('Unsupported chat message')
         if 'enable_thinking' in request and type(request['enable_thinking'])!=bool:raise ValueError('Thinking flag must be boolean')
         outputs=request.get('return',{})
-        if not isinstance(outputs,dict) or set(outputs)-{'token_logprobs','topk','hidden_states','mlp_act','attn_layers'}:raise ValueError('Unknown observation return')
+        if not isinstance(outputs,dict) or set(outputs)-{'token_logprobs','topk','hidden_states','mlp_act','mlp_out','attn_layers'}:raise ValueError('Unknown observation return')
         if type(outputs.get('token_logprobs',False))!=bool:raise ValueError('Log-prob flag must be boolean')
         outputs['token_logprobs']=outputs.get('token_logprobs',False);outputs['topk']=integer(outputs.get('topk',0),0,policy.max_topk,'top-k return')
         outputs['hidden_states']=indices(outputs.get('hidden_states',[]),num_layers,'residual layer')
         outputs['mlp_act']=indices(outputs.get('mlp_act',[]),num_layers-1,'MLP layer')
+        if 'mlp_out' in outputs:outputs['mlp_out']=indices(outputs['mlp_out'],num_layers-1,'MLP output layer')
         outputs['attn_layers']=indices(outputs.get('attn_layers',[]),num_layers-1,'attention layer')
         if set(outputs['attn_layers'])-set(full_attention_layers):raise ValueError('Attention maps requested for non-full-attention layers')
         if outputs['attn_layers'] and len(values)>policy.max_attention_texts:raise ValueError('Attention text budget exceeded')
@@ -134,3 +135,10 @@ class BudgetLedger:
     def summary(self):
         return self._transaction(lambda d:dict(successful=sum(r['status']=='succeeded' for r in d['attempts']),
             failed=sum(r['status']=='failed' for r in d['attempts']),reserved=sum(r['status']=='running' for r in d['attempts']),limit=self.policy.passes))
+
+    def lookup(self, number):
+        """按运行序号读已有账本记录。"""
+        data = json.loads(self.path.read_text())
+        if not 1 <= number <= len(data['attempts']):
+            raise KeyError(number)
+        return data['attempts'][number - 1]

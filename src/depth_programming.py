@@ -5,6 +5,11 @@ import random
 import torch
 
 
+def block_influence(before, after):
+    """返回每个词元的 ShortGPT 层影响分数。"""
+    return 1 - torch.nn.functional.cosine_similarity(before.float(), after.float(), dim=-1)
+
+
 def choose_layers(scores,drop,mode='bi',seed=11):
     if not 0<drop<len(scores) or not all(math.isfinite(float(x)) for x in scores):raise ValueError('Invalid layer budget/scores')
     if mode=='bi':removed=sorted(range(len(scores)),key=lambda i:(scores[i],i))[:drop]

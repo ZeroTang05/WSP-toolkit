@@ -63,6 +63,58 @@ def metrics(logits,query,target,alternative):
         target_log_probability=float(row[target]-normalizer))
 
 
+def prepare_pair(backend, policy, clean_text, corrupt_text, target_token, alternative_token, query_position=None):
+    """校验成对输入的词元对齐、目标分数与上下文预算。"""
+    clean_ids, corrupt_ids = backend.encode(clean_text), backend.encode(corrupt_text)
+    if len(clean_ids) != len(corrupt_ids):
+        raise ValueError("Paired same-token-length corruption required; no guessed alignment")
+    if clean_ids == corrupt_ids:
+        raise ValueError("Corruption must change token IDs")
+    length = len(clean_ids)
+    if length > min(policy.max_text_tokens, backend.context_length):
+        raise ValueError("Token/context budget exceeded")
+    if any(type(token) is not int or not 0 <= token < backend.vocab_size
+           for token in (target_token, alternative_token)) or target_token == alternative_token:
+        raise ValueError("Distinct valid target and alternative token IDs required")
+    query = length - 1 if query_position is None else query_position
+    if type(query) is not int or not 0 <= query < length:
+        raise ValueError("Explicit legal query position required")
+    return clean_ids, corrupt_ids, query
+
+
+@torch.inference_mode()
+def paired_interventions(backend, snapshot, pair, sites, target, alternative, read):
+    """一次计算干净和受扰基线，再逐个临时改变站点。"""
+    clean_ids, corrupt_ids, query = pair
+    hidden = sorted({site["layer"] for site in sites if site["kind"] == "residual"})
+    mlp = sorted({site["layer"] for site in sites if site["kind"] == "mlp_input"})
+    with backend.activate(snapshot):
+        logits, captured = read(clean_ids, hidden, mlp, [], True)
+        clean = metrics(logits, query, target, alternative)
+        del logits
+        logits, _ = read(corrupt_ids, [], [], [], True)
+        corrupt = metrics(logits, query, target, alternative)
+        del logits
+        outcomes = []
+        for site in sites:
+            kind, layer = site["kind"], site["layer"]
+            reference = captured[f"{'hidden' if kind == 'residual' else 'mlp'}_{layer}"]
+            if site.get("method") == "ablation":
+                reference = torch.zeros_like(reference)
+            with replace_activation(backend, kind, layer, reference, site["positions"], site.get("channels")):
+                logits, _ = read(corrupt_ids, [], [], [], True)
+                patched = metrics(logits, query, target, alternative)
+                del logits
+            effects = {}
+            for name in clean:
+                gap, effect = clean[name] - corrupt[name], patched[name] - corrupt[name]
+                effects[name] = dict(clean_corrupt_gap=gap, patched_minus_corrupt=effect,
+                                     normalized_gap_change=effect / gap if abs(gap) > 1e-8 else None,
+                                     restoration_interpretation_valid=gap > 1e-8)
+            outcomes.append(dict(clean=clean, corrupt=corrupt, patched=patched, effects=effects))
+    return outcomes
+
+
 class ActivationPatchingStudy:
     def __init__(self,backend,store,output,*,data_role,corruption_description,policy=None):
         if data_role not in ['train','calibration','development']:raise ValueError('Use authorized construction data only')
@@ -80,44 +132,27 @@ class ActivationPatchingStudy:
             channels=None,query_position=None,model='original'):
         if model not in ['original','edited']:raise ValueError('One explicit model variant required')
         positions=list(positions);channels=None if channels is None else list(channels)
-        clean_ids=self.backend.encode(clean_text);corrupt_ids=self.backend.encode(corrupt_text)
-        if len(clean_ids)!=len(corrupt_ids):raise ValueError('Paired same-token-length corruption required; no guessed alignment')
-        if clean_ids==corrupt_ids:raise ValueError('Corruption must change token IDs')
+        clean_ids,corrupt_ids,query=prepare_pair(self.backend,self.policy,clean_text,corrupt_text,
+                                                target_token,alternative_token,query_position)
         length=len(clean_ids)
-        if length>min(self.policy.max_text_tokens,self.backend.context_length):raise ValueError('Token/context budget exceeded')
-        for token in [target_token,alternative_token]:
-            if type(token)!=int or not 0<=token<self.backend.vocab_size:raise ValueError('Legal target/alternative IDs required')
-        if target_token==alternative_token:raise ValueError('Contrasting tokens must differ')
-        query=length-1 if query_position is None else query_position
-        if type(query)!=int or not 0<=query<length:raise ValueError('Explicit legal query position required')
         # Validate the site before reserving a request or running the model.
         width=self.backend.hidden_size if kind=='residual' else self.backend.mlp_width
         with replace_activation(self.backend,kind,layer,torch.zeros(1,length,width),positions,channels):pass
-        hidden=[layer] if kind=='residual' else [];mlp=[layer] if kind=='mlp_input' else []
-        key=('hidden_' if kind=='residual' else 'mlp_')+str(layer)
         snapshot=self.store.snapshot(with_edits=model=='edited')
         request=dict(type='activation_patch',model=model,clean_text=clean_text,corrupt_text=corrupt_text,
             kind=kind,layer=layer,positions=list(positions),channels=None if channels is None else list(channels),
             target_token=target_token,alternative_token=alternative_token,query_position=query)
         attempt=self.ledger.begin(request,snapshot['variant_id']);started=time.perf_counter();attempted=0
+        def read(*args):
+            nonlocal attempted
+            attempted+=1
+            return self.backend._read(*args)
         try:
-            with self.backend.activate(snapshot):
-                attempted+=1;logits,captured=self.backend._read(clean_ids,hidden,mlp,[],True)
-                clean_metric=metrics(logits,query,target_token,alternative_token);del logits
-                cache=captured[key];del captured
-                attempted+=1;logits,_=self.backend._read(corrupt_ids,[],[],[],True)
-                corrupt_metric=metrics(logits,query,target_token,alternative_token);del logits
-                with replace_activation(self.backend,kind,layer,cache,positions,channels):
-                    attempted+=1;logits,_=self.backend._read(corrupt_ids,[],[],[],True)
-                    patched_metric=metrics(logits,query,target_token,alternative_token);del logits
-            effects={}
-            for metric in clean_metric:
-                gap=clean_metric[metric]-corrupt_metric[metric];effect=patched_metric[metric]-corrupt_metric[metric]
-                effects[metric]=dict(clean_corrupt_gap=gap,patched_minus_corrupt=effect,
-                    normalized_gap_change=effect/gap if abs(gap)>1e-8 else None,
-                    restoration_interpretation_valid=gap>1e-8)
+            sites=[dict(kind=kind,layer=layer,positions=positions,channels=channels)]
+            outcome,=paired_interventions(self.backend,snapshot,(clean_ids,corrupt_ids,query),sites,
+                                           target_token,alternative_token,read)
             result=dict(request=request,variant_id=snapshot['variant_id'],binding=self.binding,
-                clean=clean_metric,corrupt=corrupt_metric,patched=patched_metric,effects=effects,
+                **outcome,
                 input_tokens=3*length,executed_model_forwards=3,elapsed_seconds=time.perf_counter()-started,
                 note='Raw and normalized metrics may disagree. Ratios are not clipped; patching alone does not identify a full circuit or a weight edit.')
             file=self.output/f'request_{attempt:04d}.json';file.write_text(json.dumps(result,indent=2))

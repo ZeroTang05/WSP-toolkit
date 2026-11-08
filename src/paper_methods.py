@@ -107,6 +107,18 @@ def run_wanda(lab, rows, fraction):
         fraction=fraction, modules=records)
 
 
+def taylor_mlp_scores(layers):
+    """汇总同一前馈通道对应的 gate、up 与 down 权重梯度。"""
+    scores = []
+    for layer in layers:
+        mlp = layer.mlp
+        s = sum((getattr(mlp,n).weight.detach().float()*getattr(mlp,n).weight.grad.float()).abs().sum(dim=dim)
+                for n,dim in [('gate_proj',1),('up_proj',1),('down_proj',0)])
+        if not torch.isfinite(s).all():raise ValueError('Nonfinite Taylor group importance')
+        scores.append(s.cpu())
+    return scores
+
+
 def run_taylor(lab, rows, fraction, include_eos=False):
     """Explicit first-order, elementwise |w*mean_gradient| MLP-group adaptation."""
     lab.model.requires_grad_(False)
@@ -115,13 +127,7 @@ def run_taylor(lab, rows, fraction, include_eos=False):
     lab.model.zero_grad(set_to_none=True)
     for row in rows:
         (training_loss(lab, row, include_eos)/len(rows)).backward()
-    scores = []
-    for layer in lab.layers:
-        mlp = layer.mlp
-        s = sum((getattr(mlp,n).weight.detach().float()*getattr(mlp,n).weight.grad.float()).abs().sum(dim=dim)
-                for n,dim in [('gate_proj',1),('up_proj',1),('down_proj',0)])
-        if not torch.isfinite(s).all():raise ValueError('Nonfinite Taylor group importance')
-        scores.append(s.cpu())
+    scores = taylor_mlp_scores(lab.layers)
     lab.model.zero_grad(set_to_none=True)
     lab.model.requires_grad_(False)
     keep = lab.masks(scores, fraction)
