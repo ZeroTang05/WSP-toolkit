@@ -1,122 +1,53 @@
-# idea4-weightlab
+# WSP-toolkit
 
-Experimental, paper-grounded tools for inspecting and programming open-weight
-language models. The workflow is **observe → intervene → edit/compress → repair
-→ validate**. Each method keeps its assumptions and evidence separate.
+**Inspect, edit, and evaluate open-weight language models.**
 
-## Install
+WSP stands for **Weight-Space Programming**. The toolkit lets you read model weights and internal activations, make a targeted change, and compare the resulting behavior with the base model. Edits are saved separately, with a fingerprint that ties each edit to its source checkpoint.
 
-Python 3.10 or newer. Use separate environments for the pinned model backends.
+[中文说明](README.zh-CN.md) · [Getting started](docs/getting-started.md) · [Benchmarks](docs/benchmarks.md) · [Releases](https://github.com/ZeroTang05/WSP-toolkit/releases)
 
-```sh
-python -m pip install .                    # tensor and reconstruction tools
-python -m pip install '.[qwen3,math]'       # Transformers 4.57.6: Qwen3 / Llama
-python -m pip install '.[qwen35,math]'      # Transformers 5.3.0: Qwen3.5
-python -m pip install '.[analysis]'         # original CPU numerical stack
-```
+## What you can do
 
-Qwen3.5 requires Torch >=2.4. Select the appropriate PyTorch build for your
-hardware before installing. The isolated CPU kernel additionally requires Linux
-bubblewrap. Models, practice sets and device scheduling are supplied by the host.
+| Goal | Tool |
+|---|---|
+| Read and edit individual weight matrices | `WeightStore` reads safetensors checkpoints and saves checked replacement tensors |
+| See how a model processes an input | `ForwardService` runs budgeted generation and records selected activations, token scores, and attention maps |
+| Check what a component contributes | `ActivationPatchingStudy` replaces selected activations and measures the output change |
+| Explore edits with a model as the programmer | `ProgrammingSession` provides an isolated CPU workspace and records tool calls and budgets |
+| Combine trained updates or repair pruning damage | `ties_merge` combines aligned parameter updates. `sparsegpt_reconstruct` compensates for removed weights within a layer |
+| Compare a frozen edit with its base | The host-side evaluator records generated answers, accuracy, truncation, and repetition statistics |
 
-## Implemented core
+The original Weight-Space Programming experiment inspired the isolated workspace and budgeted model tools. Activation patching, pruning, and update merging have their own method references and experiment settings. [Original research](https://rikiyat.github.io/blog/weight-space-programming/) · [Tool permissions and methods](docs/tool-permissions.md)
 
-| Problem | Tools | Method basis |
-|---|---|---|
-| Read and propose direct edits | WeightStore, EditPolicy, directional projections | MIT WSP experiment-8 contract; explicit tensor algebra |
-| Observe behavior and internal states | ForwardService, pinned HF backends, budget ledger | MIT WSP generation / teacher-forced interface |
-| Analyze in a persistent CPU workspace | CPUKernel, ProgrammingSession, tool_schemas, dispatch_tool | Original CPU-kernel + forward-service separation |
-| Let a fresh model use the tools | programmer.run_programmer, source runner | Independent driver; full transcripts, live budgets and own-note context rollovers |
-| Test a local activation's causal effect | ActivationPatchingStudy | Zhang & Nanda, ICLR 2024; matched clean/corrupt/patched runs |
-| Compensate pruning damage | input_hessian, sparsegpt_reconstruct | SparseGPT, ICML 2023; declared local reconstruction adaptation |
-| Combine trained effective updates | ties_merge | TIES mass-sign disjoint mean; explicit reference tie rules and coordinate scope |
+## A measured result
 
-```python
-from weight_programming import WeightStore, project_output_direction
+On the full **1,319-question GSM8K** test set, Qwen3-0.6B went from **485 correct (36.77%)** to **600 correct (45.49%)** after three trained updates were combined with TIES and scaled to the same size as their ordinary average. That is **+8.72 percentage points**. The unscaled TIES update scored **417/1,319 (31.61%)**, so update size mattered in this experiment. [All five conditions and the evaluation setup](docs/benchmarks.md)
 
-store = WeightStore(model_dir, edit_dir)
-weight = store.load_original(parameter_name)
-# direction, selected_columns and strength must come from an explicit experiment.
-proposal = project_output_direction(weight, direction, selected_columns, strength)
-store.save_edit(parameter_name, proposal)
-```
+## Get started
 
-Edits are proposals tied to a source fingerprint; numerical validity does not
-establish behavioral benefit. The two HF backends preserve raw residual, MLP
-input and attention semantics. Qwen3.5 has full-attention maps only at its full
-attention layers; its unused MTP branch is recorded explicitly.
-
-## Method boundaries
-
-The original WSP track excludes training and iterative loss fitting. Its tool
-dispatcher exposes persistent CPU analysis and budgeted forward requests.
-Activation intervention, SparseGPT reconstruction and training-based methods
-belong to explicitly separate tracks. See [permission and method logic](docs/tool-permissions.md).
-
-Existing research modules also implement or adapt Wanda, MLP structural pruning,
-LoRA references, task-update arithmetic, model soups, update-rank compression and
-BI-based depth selection. They remain research interfaces under `src/`, with
-method contracts under `contracts/`; they are not all promoted to the core API.
-Run these scripts with `PYTHONPATH=src` and inspect their CLI help.
-
-## Evidence and examples
-
-- Real Qwen3-0.6B observations: 128 training-derived texts, 27,776 tokens.
-- Local pruning/compensation: 12 real-matrix conditions; this is reconstruction
-  evidence, not whole-model accuracy or sparse-kernel acceleration.
-- Real Qwen3.5-0.8B observations: 32 texts, 6,528 tokens, verified source tensors.
-- Paired activation maps: 232 real 0.6B queries / 696 forwards on four authored
-  factual pairs; this is a diagnostic example, not a discovered complete circuit.
-
-Reproduction scripts include `run_forward_observation_study.py`,
-`run_reconstruction_study.py`, `run_qwen35_observation.py` and
-`run_activation_patching_study.py`. They require external models and authorized
-construction data. Professional OfficeBench acquisition and a declared execution
-port are included as research code; multi-agent improvement is an open experiment.
-
-## Validation
-
-In the qwen3 environment, install `.[test,math]` and run:
+Use Python 3.10 or later. Install from source to use the interfaces described here.
 
 ```sh
-PYTHONPATH=src:tests python -m unittest test_weight_programming test_forward_service test_wsp_grading test_reconstruction test_cpu_kernel test_programming_session test_activation_patching test_tool_api
+git clone https://github.com/ZeroTang05/WSP-toolkit.git
+cd WSP-toolkit
+python -m pip install .
 ```
 
-In the separate qwen35 environment:
+Start with a local safetensors checkpoint and inspect one weight matrix on the CPU. The following command uses the first MLP output matrix in a Qwen3 checkpoint.
 
 ```sh
-PYTHONPATH=src:tests python -m unittest test_qwen35_backend
+python examples/inspect_weight.py --model /path/to/Qwen3-0.6B --edit-dir ./weight-edits
 ```
 
-Kernel tests need Linux bubblewrap and a virtualenv Python. Verification covers
-the stated interfaces and local numerical properties; it is not a certificate
-of downstream capability, efficiency or independent MIT-effect reproduction.
+The example prints the matrix name, dimensions, and norm. The norm is a single number that summarizes the size of all its values. For model runs, choose the environment that matches your checkpoint. [Installation and examples](docs/getting-started.md)
 
-For fresh model-programmer usage and experiment boundaries, see
-[model-programmer guide](docs/model-programmer.md). Its lifecycle checks run as
-`PYTHONPATH=src:tests python -m unittest test_programmer test_programming_session`.
+| Guide | What it covers |
+|---|---|
+| [Model programmer](docs/model-programmer.md) | Give a model the inspection and editing tools and record its work |
+| [TIES merging](docs/ties-merging.md) | Merge trained updates and control their size |
+| [Final math evaluation](docs/final-evaluation.md) | Evaluate frozen weights on a separate test set |
+| [Benchmark results](docs/benchmarks.md) | Compare all tested conditions and see which studies are still open |
 
-See [effective-delta merging](docs/ties-merging.md) for TIES method semantics.
-Its checks run as `PYTHONPATH=src:tests python -m unittest test_merging`.
+## License and references
 
-Full mathematical evaluation uses a separate host-owned path; see
-[final evaluation](docs/final-evaluation.md). Its generation-path check runs as
-`PYTHONPATH=src:tests python -m unittest test_math_evaluation`.
-
-## Sources and license
-
-- [Sparks of Weight-Space Programming](https://rikiyat.github.io/blog/weight-space-programming/)
-  and [author experiment logs / contract](https://github.com/RikiyaT/lm_understand-logs).
-- [SparseGPT](https://arxiv.org/abs/2301.00774v3),
-  [activation patching methodology](https://arxiv.org/abs/2309.16042v2),
-  [Wanda](https://arxiv.org/abs/2306.11695),
-  [LLM-Pruner](https://arxiv.org/abs/2305.11627).
-- [LoRA](https://arxiv.org/abs/2106.09685),
-  [Task Arithmetic](https://arxiv.org/abs/2212.04089),
-  [Model Soups](https://arxiv.org/abs/2203.05482),
-  [ShortGPT](https://arxiv.org/abs/2403.03853),
-  [SVD-LLM](https://arxiv.org/abs/2403.07378).
-
-Original project code: Apache-2.0. Upstream notices remain in
-[THIRD_PARTY.md](THIRD_PARTY.md) and their source directories. Models, datasets
-and research reference material retain their own terms.
+Project code is released under [Apache-2.0](LICENSE). [Third-party notices](THIRD_PARTY.md) document the upstream code and its licenses. Model checkpoints and datasets have their own terms.

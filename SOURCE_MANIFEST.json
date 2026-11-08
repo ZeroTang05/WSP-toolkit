@@ -11,7 +11,7 @@
     "LICENSE": "c95bae1d1ce0235ecccd3560b772ec1efb97f348a79f0fbe0a634f0c2ccefe2c",
     "THIRD_PARTY.md": "0692dfc96f295f05728d2a4af81448a886f2f860bc389b91126fb8998825ab9d",
     "pyproject.toml": "f69576f928defd207575fb5cff148ea13ddccd5ecb9212cb866bd97048071f64",
-    "README.md": "0a799cb6aea4a1ef81c0cdc00b1973c47250549fec80909de2752e561384c515",
+    "README.md": "d170c041edd053af571587e0752dd7ae74c8bc043483a15d3092a259a79f2e0e",
     ".gitignore": "8e15cac784e4da6c221d94ddaa7d08fc2355c04ab1e0fde824a1644417c186c3",
     "research/references/mit-wsp/LICENSE": "395f7febedfda6b5498ca36cfe3344d3986659ce4385dd8b03d2d75604250a8e",
     "research/references/mit-wsp/mathqa.py": "f0d576a1adc625dede7bff749b3bf8c9a5a8f6bae43d51e2d0ee36d694e89843",
@@ -182,6 +182,10 @@
     "src/weight_programming/merging.py": "6ffcc3539c10e804349fd7485090a4d3356e39d13ebf090923e3323cf0e62e99",
     "src/weight_programming/cpu_kernel.py": "78d2c9ddd1a2658ac3ab067eb3bc68b1e78bcce2ed1ca43debb20f76239a7e44",
     "src/weight_programming/licenses/mit-wsp-LICENSE": "395f7febedfda6b5498ca36cfe3344d3986659ce4385dd8b03d2d75604250a8e",
-    "src/weight_programming/licenses/sparsegpt-LICENSE": "c95bae1d1ce0235ecccd3560b772ec1efb97f348a79f0fbe0a634f0c2ccefe2c"
+    "src/weight_programming/licenses/sparsegpt-LICENSE": "c95bae1d1ce0235ecccd3560b772ec1efb97f348a79f0fbe0a634f0c2ccefe2c",
+    "README.zh-CN.md": "b50b0ae2d6873568b06d5b7f83255bf4d56658dcf3fc5c1d038ba420cee7e7ca",
+    "docs/getting-started.md": "0a61440d7d7d5f5d1a8bd74ab926444f0624eb42c69c1d926344ed16e9cc5f8d",
+    "docs/benchmarks.md": "6e74e00332aa9ac5fb7b27cc6a3a9a7a913e4766b2f7bbaf7215eb64b85b21ca",
+    "examples/inspect_weight.py": "e18a0df48d2edf09da2ce5cf08a897b1072a854c8141539ab1c3d266e989358c"
   }
 }
