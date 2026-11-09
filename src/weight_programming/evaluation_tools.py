@@ -36,6 +36,14 @@ def _cluster_interval(original, edited, seed, draws):
     return np.quantile(sample.mean(1), [0.025, 0.975]).tolist()
 
 
+def aligned_completion(backend, prefix, text):
+    """返回提示词边界之后的回答词元，共供评分和梯度归因使用。"""
+    full = backend.encode(text)
+    if full[:len(prefix)] != prefix or len(full) <= len(prefix):
+        raise ValueError("Use a prompt boundary that aligns with complete tokens")
+    return full[len(prefix):]
+
+
 class EvaluationTools:
     """从已授权的数据和指定模型版本产生可重算的报告。"""
 
@@ -111,11 +119,9 @@ class EvaluationTools:
                 raise ValueError("Chosen and rejected answers must differ")
             for side in ("chosen", "rejected"):
                 text = prompt + pair[side]
-                full = backend.encode(text)
-                if full[:len(prefix)] != prefix or len(full) <= len(prefix):
-                    raise ValueError("Use a prompt boundary that aligns with complete tokens")
+                suffix = aligned_completion(backend, prefix, text)
                 texts.append(text)
-                starts.append((len(prefix), len(full)))
+                starts.append((len(prefix), len(prefix) + len(suffix)))
         if len({pair["id"] for pair in pairs}) != len(pairs):
             raise ValueError("Preference pair IDs must be unique")
 

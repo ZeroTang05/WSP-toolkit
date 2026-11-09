@@ -8,20 +8,22 @@ import re
 
 from .artifacts import ArtifactStore
 from .attribution_tools import AttributionTools
-from .circuit_tools import attention_flow, attention_layers, attention_rollout
+from .circuit_tools import attention_flow, attention_flow_graph, attention_layers, attention_rollout
 from .comparison_tools import ComparisonTools
 from .delta_tools import DeltaTools
+from .edge_tracing import EdgeTracing
 from .editing_tools import merge_updates, project_weight, prune_and_compensate
 from .evidence_tools import render_evidence
 from .evaluation_tools import BoxedExactGrader, EvaluationTools
 from .fact_tools import FactTools
+from .feature_circuits import FeatureCircuits
 from .feature_tools import FeatureTools
 from .forward_service import ForwardService, PracticeSet
-from .intervention_tools import InterventionTools
+from .intervention_tools import InterventionTools, _PAIR as _INTERVENTION_PAIR
 from .model_registry import register_model
 from .patches import VersionStore
 from .python_tools import ARRAY_PATTERN, RUN_PATTERN, SESSION_PATTERN, PythonTools
-from .representation_tools import RepresentationTools
+from .representation_tools import RepresentationTools, activation_rows
 from .structure_tools import StructureTools
 from .tool_registry import ToolRegistry, ToolSpec, object_schema
 from .training_tools import TrainingTools
@@ -44,7 +46,8 @@ class InspectionTools:
 
     def __init__(self, forward, *, allow_edits=False, allow_interventions=False, allow_gradients=False,
                  comparison=None, training_data=None, allow_training=False, allow_python=False, kernel_python=None,
-                 fact_editor_python=None, fact_editor_source=None):
+                 fact_editor_python=None, fact_editor_source=None, quantization_python=None, slicegpt_python=None,
+                 circuit_tracer_python=None):
         if training_data is not None and (training_data.role != "train" or not training_data.rows):
             raise ValueError("Register a nonempty training dataset with role=train")
         if allow_training and training_data is None:
@@ -56,6 +59,9 @@ class InspectionTools:
         if fact_editor_python is not None and not (allow_edits and allow_gradients):
             raise ValueError("Registering the fact editor requires edit and gradient permissions")
         self.forward = forward
+        self.is_language_model = "generate" in forward.backend.modes
+        if not self.is_language_model and (allow_interventions or allow_gradients or allow_training):
+            raise ValueError("This classifier backend supports prediction, snapshots and weight editing")
         self.artifacts = ArtifactStore(forward.work_dir)
         self.versions = VersionStore(forward.work_dir.parent, forward.store, forward.backend.parameters)
         base = self.versions.base
@@ -77,9 +83,13 @@ class InspectionTools:
         self.allow_gradients = allow_gradients
         self.allow_training = allow_training
         self.training_data = training_data
-        self.interventions = InterventionTools(forward, self.versions, self.artifacts, self._sites)
-        self.delta = DeltaTools(self.versions, self.artifacts, self._input_rows)
-        self.structures = StructureTools(self)
+        self.interventions = InterventionTools(forward, self.versions, self.artifacts, self._sites,
+                                               allow_gradients=allow_gradients)
+        self.edge_tracing = EdgeTracing(self)
+        self.feature_circuits = FeatureCircuits(self, circuit_tracer_python)
+        self.delta = DeltaTools(self.versions, self.artifacts, self._input_rows, forward.backend)
+        self.registered_adapters = []
+        self.structures = StructureTools(self, quantization_python=quantization_python, slicegpt_python=slicegpt_python)
         self.training = TrainingTools(self)
         self.evaluation = EvaluationTools(forward, self.versions, self.artifacts, self.model_forward)
         self.comparison = comparison
@@ -116,6 +126,9 @@ class InspectionTools:
                                     "prompts": _TEXTS, "observe": _SITES,
                                     "n": _POSITIVE, "max_new_tokens": _POSITIVE},
                                    "mode", "variant_id", "prompts", "max_new_tokens")
+        prediction = object_schema({"mode": {"const": "predict"}, "variant_id": _ID,
+                                    "texts": _TEXTS, "observe": _SITES}, "mode", "variant_id", "texts")
+        forward_schemas = [teacher, generation] if self.is_language_model else [prediction]
         array_region = {"type": "array", "items": {"type": "array", "items": _INDEX,
                                                      "minItems": 2, "maxItems": 2}}
         edit = object_schema({"tensor": _ID, "op": {"enum": ["add", "replace"]},
@@ -158,9 +171,17 @@ class InspectionTools:
                                                     "fraction": {"type": "number", "exclusiveMinimum": 0,
                                                                  "exclusiveMaximum": 1}},
                                                    "variant_id", "method", "calibration_case_ids", "fraction"))
+        if self.structures.external.quantization_python is not None:
+            structural_fields.append(object_schema({"variant_id": _ID, "method": {"enum": ["gptq", "awq"]},
+                "calibration_texts": {**_TEXTS, "maxItems": 128}, "group_size": {"enum": [32, 64, 128]}},
+                "variant_id", "method", "calibration_texts"))
+        if self.structures.external.slicegpt_python is not None:
+            structural_fields.append(object_schema({"variant_id": _ID, "method": {"const": "slicegpt"},
+                "calibration_texts": {**_TEXTS, "maxItems": 128}, "target_hidden_size": {**_POSITIVE, "multipleOf": 8}},
+                "variant_id", "method", "calibration_texts", "target_hidden_size"))
         structures = ()
         if self.structures.supported:
-            structures = (ToolSpec("compress_model", "Export a smaller checkpoint by deleting layers or MLP channels.",
+            structures = (ToolSpec("compress_model", "Export a smaller checkpoint using structural pruning or packed quantization.",
                                    {"type": "object", "oneOf": structural_fields}, self.structures.compress_model,
                                    permission="edit", output_schema=result_schema("checkpoint_path", "parameters", "layer_count")),)
         fact_editing = ()
@@ -193,41 +214,93 @@ class InspectionTools:
                                           "encoder_id", "artifact_id", "method", "right_artifact_id")
         probe = ()
         if find_spec("sklearn") is not None:
-            probe = (ToolSpec("probe_representation", "Fit a linear probe with separate evaluation and control labels.",
-                              object_schema({"artifact_id": _ID, "labels": _TEXTS, "train_indices": sample_indices,
-                                             "evaluation_indices": sample_indices, "seed": _INDEX,
-                                             "control_labels": _TEXTS, "input_baseline_artifact_id": _ID,
-                                             "token_position": _INDEX}, "artifact_id", "labels", "train_indices", "evaluation_indices"),
+            probe_fields = {"artifact_id": _ID, "labels": _TEXTS, "train_indices": sample_indices,
+                            "evaluation_indices": sample_indices, "seed": _INDEX, "control_labels": _TEXTS,
+                            "input_baseline_artifact_id": _ID, "token_position": _INDEX}
+            if self.interventions.has_leace:
+                probe_fields["fit_eraser"] = {"type": "boolean"}
+            probe = (ToolSpec("probe_representation", "Fit a linear probe and optionally fit a LEACE eraser.",
+                              object_schema(probe_fields, "artifact_id", "labels", "train_indices", "evaluation_indices"),
                               self.representations.probe_representation,
                               output_schema=result_schema("coefficients_artifact_id", "accuracy", "control_accuracy")),)
         plots = ()
         if find_spec("matplotlib") is not None:
-            plots = (ToolSpec("render_evidence", "Render a heatmap from a registered numeric artifact.",
-                              object_schema({"artifact_id": _ID, "view": {"enum": ["activation_heatmap",
-                                                                                   "attention_heatmap", "patching_heatmap",
-                                                                                   "similarity_heatmap", "attribution_heatmap"]},
-                                             "region": array_region, "format": {"enum": ["png", "pdf"]},
-                                             "axes": {"type": "array", "items": _ID, "minItems": 2, "maxItems": 2}},
-                                            "artifact_id", "view"), partial(render_evidence, self.artifacts),
-                              output_schema=result_schema("artifact_id", "plot_path", "top_cells")),)
+            plot_fields = {"artifact_id": _ID, "format": {"enum": ["png", "pdf"]}}
+            plot_schemas = [object_schema({**plot_fields,
+                "view": {"enum": ["activation_heatmap", "attention_heatmap", "patching_heatmap",
+                                  "similarity_heatmap", "attribution_heatmap"]}, "region": array_region,
+                "axes": {"type": "array", "items": _ID, "minItems": 2, "maxItems": 2}}, "artifact_id", "view")]
+            if find_spec("networkx") is not None:
+                plot_schemas.append(object_schema({**plot_fields, "view": {"const": "graph"},
+                    "max_edges": {**_POSITIVE, "maximum": 32}}, "artifact_id", "view"))
+            plots = (ToolSpec("render_evidence", "Render a heatmap or directed graph from a registered artifact.",
+                              {"type": "object", "oneOf": plot_schemas}, partial(render_evidence, self.artifacts),
+                              output_schema={**result_schema("artifact_id", "plot_path"),
+                                             "anyOf": [{"required": ["top_cells"]}, {"required": ["top_edges"]}]}),)
         traces = ()
+        trace_schemas = []
         if self._attention_prefix:
             trace_fields = {"run_id": _ID, "sample_index": _INDEX, "through_layer": _INDEX}
-            trace_schemas = [object_schema({**trace_fields, "method": {"const": "attention_rollout"}}, "run_id", "method")]
+            trace_schemas.append(object_schema({**trace_fields, "method": {"const": "attention_rollout"}}, "run_id", "method"))
             if "attention_flow" in self._attention_limits:
                 trace_schemas.append(object_schema({**trace_fields, "method": {"const": "attention_flow"},
                                                     "query_position": _INDEX}, "run_id", "method", "query_position"))
-            traces = (ToolSpec("trace_circuit", "Analyze descriptive attention rollout or flow from a saved self-attention prefix.",
+        if self.edge_tracing.methods:
+            pair = {**_INTERVENTION_PAIR, "required": ["clean_text", "corrupt_text", "target_token", "alternative_token"]}
+            cases = {"type": "array", "items": pair, "minItems": 1, "maxItems": 8}
+            links = {"type": "array", "items": object_schema({"source": _ID, "target": _ID}, "source", "target"),
+                     "minItems": 1, "maxItems": 128, "uniqueItems": True}
+            metrics = ["logit_difference", "target_probability", "target_log_probability"]
+            common = {"variant_id": _ID, "pairs": cases, "metric": {"enum": metrics},
+                      "forward_budget": {**_POSITIVE, "maximum": 256}}
+            required = ("variant_id", "pairs", "method")
+            trace_schemas.extend((
+                object_schema({**common, "method": {"const": "path_patching"}, "review_pairs": cases,
+                               "path": {**_SITES, "minItems": 2, "maxItems": 32}, "strength": {"type": "number"}},
+                              *required, "path"),
+                object_schema({**common, "method": {"const": "acdc"}, "review_pairs": cases, "edges": links,
+                               "metric": {"enum": ["kl_divergence", *metrics]}, "control_seed": _INDEX,
+                               "threshold": {"type": "number", "exclusiveMinimum": 0}}, *required, "edges", "threshold"),
+            ))
+            if "eap" in self.edge_tracing.methods:
+                trace_schemas.append(object_schema({**common, "method": {"const": "eap"}, "edges": links,
+                                                    "top_k": {**_POSITIVE, "maximum": 128}}, *required, "edges"))
+        if self.feature_circuits.python is not None:
+            influence = {"type": "number", "exclusiveMinimum": 0, "maximum": 1}
+            trace_schemas.append(object_schema({"method": {"const": "feature_attribution_graph"}, "variant_id": _ID,
+                "transcoder_id": _ID, "text": _ID, "target_tokens": {"type": "array", "items": _INDEX,
+                    "minItems": 1, "maxItems": 4, "uniqueItems": True},
+                "max_feature_nodes": {**_POSITIVE, "maximum": 128}, "node_threshold": influence, "edge_threshold": influence},
+                "method", "variant_id", "transcoder_id", "text", "target_tokens"))
+        if trace_schemas:
+            traces = (ToolSpec("trace_circuit", "Trace attention, residual edges, or a replacement-model feature graph.",
                                {"type": "object", "oneOf": trace_schemas},
                                self.trace_circuit,
                                output_schema=result_schema("artifact_id", "evidence_type", "source_run_id", "source_artifact_ids")),)
-        return (
+        attribution_fields = {"variant_id": _ID, "text": _ID, "baseline_text": _ID,
+                              "steps": {"type": "integer", "minimum": 2, "maximum": 64}}
+        attribution_required = ("variant_id", "text", "baseline_text")
+        attribution_schemas = [
+            object_schema({**attribution_fields, "target_token": _INDEX, "alternative_token": _INDEX,
+                           "query_position": _INDEX, "method": {"const": "integrated_gradients"}},
+                          *attribution_required, "target_token"),
+            object_schema({**attribution_fields, "chosen": _ID, "rejected": _ID,
+                           "aggregation": {"enum": ["sum", "mean"]}, "method": {"const": "contrastive_sequence"}},
+                          *attribution_required, "method", "chosen", "rejected"),
+        ]
+        lens_fields = {"run_id": _ID, "site_ids": {**_SITES, "minItems": 1, "maxItems": 32},
+                       "sample_indices": {**sample_indices, "maxItems": 32}, "token_position": _INDEX,
+                       "topk": {"type": "integer", "minimum": 1, "maximum": 50}, "target_token": _INDEX}
+        lens_schemas = [object_schema({**lens_fields, "method": {"const": "logit_lens"}}, "run_id", "site_ids"),
+                        object_schema({**lens_fields, "method": {"const": "tuned_lens"}, "decoder_ref": _ID},
+                                      "run_id", "site_ids", "method", "decoder_ref")]
+        specs = (
             *python_specs,
             ToolSpec("describe_model", "List the registered checkpoint and its available observation sites.",
                      object_schema({"variant_id": _ID, "workspace": workspace}), self.describe_model,
                      output_schema=result_schema("variant_id", "model_type", "layers", "sites")),
             ToolSpec("model_forward", "Run a budgeted forward request with optional observations.",
-                     {"type": "object", "oneOf": [teacher, generation]}, self.model_forward,
+                     {"type": "object", "oneOf": forward_schemas}, self.model_forward,
                      output_schema=result_schema("run_id", "variant_id", "status", "artifacts", "usage")),
             ToolSpec("read_artifact", "Read an array slice or a small page of generated records.",
                      object_schema({"artifact_id": _ID, "region": array_region, "offset": _INDEX, "workspace": workspace,
@@ -272,13 +345,16 @@ class InspectionTools:
             ToolSpec("project_weight", "Remove part of a declared output direction from selected columns.",
                      object_schema({"parent_variant_id": _ID, "tensor": _ID,
                                     "direction": {"type": "array", "items": {"type": "number"}, "minItems": 1},
+                                    "direction_artifacts": {"type": "array", "items": _ID, "minItems": 2, "maxItems": 2},
+                                    "sample_indices": sample_indices, "token_position": _INDEX,
                                     "columns": {"type": "array", "items": _INDEX, "minItems": 1, "uniqueItems": True},
-                                    "strength": {"type": "number"}}, "parent_variant_id", "tensor", "direction", "columns"),
-                     partial(project_weight, self.versions), permission="edit",
+                                    "strength": {"type": "number"}}, "parent_variant_id", "tensor", "columns"),
+                     self.project_weight, permission="edit",
                      output_schema=result_schema("patch_id", "columns", "realized_norm")),
             ToolSpec("merge_updates", "Merge same-parent patches using task arithmetic, TIES or DARE.",
                      object_schema({"parent_variant_id": _ID, "patch_ids": {"type": "array", "items": _ID,
-                                                                          "minItems": 2, "uniqueItems": True},
+                                                                          "minItems": 1, "uniqueItems": True},
+                                    "adapter_ids": {"type": "array", "items": _ID, "minItems": 1, "uniqueItems": True},
                                     "method": {"enum": ["task_arithmetic", "ties", "dare"]},
                                     "coefficients": {"type": "array", "items": {"type": "number"}},
                                     "density": {"type": "number", "minimum": 0, "maximum": 1},
@@ -286,8 +362,8 @@ class InspectionTools:
                                     "seed": {**_INDEX, "maximum": 2**32 - 1},
                                     "dare_merge": {"enum": ["task_arithmetic", "ties"]},
                                     "target_norm": {"type": "number", "exclusiveMinimum": 0}},
-                                   "parent_variant_id", "patch_ids", "method"),
-                     partial(merge_updates, self.versions), permission="edit",
+                                   "parent_variant_id", "method"),
+                     self.merge_updates, permission="edit",
                      output_schema=result_schema("patch_id", "input_patch_ids", "merge_evidence", "realized_norm")),
             ToolSpec("prune_and_compensate", "Prune a linear layer using observed inputs and save its mask and patch.",
                      object_schema({"parent_variant_id": _ID, "tensor": _ID, "input_artifact_id": _ID,
@@ -299,15 +375,21 @@ class InspectionTools:
                      self.prune_and_compensate, permission="edit",
                      output_schema=result_schema("patch_id", "mask_artifact_id", "realized_zero_fraction")),
             *self.interventions.specs(),
-            ToolSpec("analyze_weight_delta", "Measure changes in registered variants or a WSP LoRA update.",
+            ToolSpec("analyze_weight_delta", "Measure changes in registered variants or an imported LoRA update.",
                      object_schema({"base_variant_id": _ID, "variant_id": _ID, "adapter_id": _ID,
                                     "tensors": _SITES, "other_variant_id": _ID,
                                     "direction_rank": {"type": "integer", "minimum": 0, "maximum": 32},
+                                    "direction_solver": {"enum": ["exact", "randomized"]},
+                                    "direction_seed": {**_INDEX, "maximum": 2**32 - 1},
+                                    "direction_iterations": {"type": "integer", "minimum": 1, "maximum": 8},
                                     "input_artifacts": input_artifacts}, "base_variant_id"),
                      self.delta.analyze_weight_delta,
                      output_schema=result_schema("report_artifact_id", "delta_norm", "changed_tensors")),
             ToolSpec("compress_update", "Compress an existing patch or WSP LoRA update and optionally materialize it.",
-                     object_schema({"parent_variant_id": _ID, "rank": _POSITIVE, "patch_id": _ID, "adapter_id": _ID,
+                     object_schema({"parent_variant_id": _ID,
+                                    "rank": {"oneOf": [_POSITIVE, {"type": "object", "minProperties": 1,
+                                                                    "additionalProperties": _POSITIVE}]},
+                                    "patch_id": _ID, "adapter_id": _ID,
                                     "method": {"enum": ["truncated_svd", "activation_weighted_svd"]},
                                     "input_artifacts": input_artifacts, "materialize": {"type": "boolean"}},
                                    "parent_variant_id", "rank"), self.delta.compress_update, permission="edit",
@@ -341,7 +423,8 @@ class InspectionTools:
                      output_schema=result_schema("report_artifact_id", "mean_relative_margin")),
             ToolSpec("compare_models", "Compare shared weight coordinates, representations or development behavior.",
                      object_schema({"left_variant_id": _ID, "right_variant_id": _ID, "right_workspace": workspace,
-                                    "views": {"type": "array", "items": {"enum": ["weights", "representations", "behavior", "crosscoder"]},
+                                    "views": {"type": "array", "items": {"enum": ["weights", "representations", "crosscoder"] +
+                                                                                  (["behavior"] if self.is_language_model else [])},
                                               "minItems": 1, "uniqueItems": True},
                                     "texts": {**_TEXTS, "minItems": 2, "maxItems": 128}, "tensors": _SITES,
                                     "left_sites": {**_SITES, "minItems": 1, "maxItems": 32},
@@ -353,24 +436,20 @@ class InspectionTools:
             ToolSpec("extract_features", "Read sparse SAE or shared crosscoder features from saved activations.",
                      {"type": "object", "oneOf": [sae_schema, crosscoder_schema]}, self.features.extract_features,
                      output_schema=result_schema("encoder_id", "method", "artifact_id", "reconstruction", "report_artifact_id")),
-            ToolSpec("scan_lens", "Read intermediate residuals through the model's final norm and vocabulary head.",
-                     object_schema({"run_id": _ID, "site_ids": {**_SITES, "minItems": 1, "maxItems": 32},
-                                    "method": {"const": "logit_lens"}, "sample_indices": {**sample_indices, "maxItems": 32},
-                                    "token_position": _INDEX, "topk": {"type": "integer", "minimum": 1, "maximum": 50},
-                                    "target_token": _INDEX}, "run_id", "site_ids"), self.representations.scan_lens,
+            ToolSpec("scan_lens", "Read intermediate residuals directly or through a fitted translator.",
+                     {"type": "object", "oneOf": lens_schemas}, self.representations.scan_lens,
                      output_schema=result_schema("report_artifact_id", "final_reference_available")),
             *traces,
             *probe,
-            ToolSpec("attribute_output", "Compute signed token attribution with integrated gradients.",
-                     object_schema({"variant_id": _ID, "text": _ID, "baseline_text": _ID, "target_token": _INDEX,
-                                    "alternative_token": _INDEX, "query_position": _INDEX,
-                                    "steps": {"type": "integer", "minimum": 2, "maximum": 64},
-                                    "method": {"const": "integrated_gradients"}},
-                                   "variant_id", "text", "baseline_text", "target_token"),
+            ToolSpec("attribute_output", "Attribute a token score or an answer margin using integrated gradients.",
+                     {"type": "object", "oneOf": attribution_schemas},
                      self.attribution.attribute_output, permission="gradient",
                      output_schema=result_schema("artifact_id", "score_change", "integration_error")),
             *plots,
         )
+        language_tools = {"scan_lens", "score_preferences", "attribute_output", "run_intervention", "localize_behavior",
+                          "train_update", "evaluate_variants"}
+        return tuple(spec for spec in specs if self.is_language_model or spec.name not in language_tools)
 
     def workspace_tools(self, workspace):
         """解析宿主明确注册的主模型或比较模型。"""
@@ -387,27 +466,53 @@ class InspectionTools:
         variant = self.versions.variant(self.variant_id if variant_id is None else variant_id)
         backend = self.forward.backend
         full = set(backend.full_attention_layers)
+        transcoders = self.feature_circuits.available(variant["variant_id"])
         return {**variant,
                 "model_type": backend.identity["model_type"], "backend": backend.identity["backend"],
                 "context_tokens": backend.context_length, "vocab_size": backend.vocab_size,
-                "modes": ["teacher_forced", "generate"], "layer_count": backend.num_layers,
+                "modes": list(backend.modes), "layer_count": backend.num_layers,
+                "output_kind": "next_token_logits" if self.is_language_model else "sequence_classification",
+                "label_names": [backend.model.config.id2label[i] for i in range(backend.model.config.num_labels)]
+                if not self.is_language_model else None,
                 "layers": [{"index": layer, "attention": "full" if layer in full else "linear"}
                            for layer in range(backend.num_layers)],
                 "sites": deepcopy(list(self._sites.values())), "weight_editing": self.allow_edits,
                 "activation_interventions": self.allow_interventions,
+                "intervention_methods": (["replace", "ablation", "direction"] +
+                                         (["concept_erasure"] if self.interventions.has_leace else []))
+                if self.allow_interventions else [],
+                "localization_methods": (["exact_scan"] + (["atp_star"] if self.interventions.has_atp_star else []))
+                if self.allow_interventions else [],
                 "python_execution": self.python is not None,
                 "fact_editing_methods": ["rome", "memit"] if self.fact_editor is not None else [],
+                "compression_methods": ((["block_influence"] if self.structures.supported else []) +
+                                        (["taylor_mlp"] if self.structures.supported and self.allow_gradients
+                                          and self.training_data is not None else []) +
+                                        (["gptq", "awq"] if self.structures.external.quantization_python else []) +
+                                        (["slicegpt"] if self.structures.external.slicegpt_python else []))
+                if self.allow_edits else [],
+                "lens_methods": ["logit_lens", "tuned_lens"] if self.is_language_model else [],
                 "feature_dictionaries": self.features.available(variant["variant_id"]),
+                "feature_transcoders": transcoders,
+                "registered_adapters": self.registered_adapters,
                 "gradients": self.allow_gradients,
                 "training_dataset_id": self.training_data.name
                 if self.training_data is not None and (self.allow_training or (self.allow_edits and self.allow_gradients))
                 else None,
-                "trace_circuit_methods": {method: {"through_layers": list(range(self._attention_prefix)), "max_tokens": limit}
-                                          for method, limit in self._attention_limits.items() if self._attention_prefix},
+                "trace_circuit_methods": {**{method: {"through_layers": list(range(self._attention_prefix)), "max_tokens": limit}
+                                              for method, limit in self._attention_limits.items() if self._attention_prefix},
+                                          **self.edge_tracing.capabilities(),
+                                          **({"feature_attribution_graph": {"max_text_tokens": 31, "transcoder_ids": transcoders}}
+                                             if self.feature_circuits.python else {})},
+                "circuit_nodes": list(self.edge_tracing.circuit.order) if self.edge_tracing.circuit else [],
                 "comparison_variant_id": self.comparison.variant_id if self.comparison else None}
 
-    def trace_circuit(self, run_id, method, sample_index=0, through_layer=None, query_position=None):
+    def trace_circuit(self, run_id=None, method=None, sample_index=0, through_layer=None, query_position=None, **arguments):
         """分析已采集的注意力，保留有效词元、来源和证据类型。"""
+        if method in ("path_patching", "acdc", "eap"):
+            return self.edge_tracing.run(method, **arguments)
+        if method == "feature_attribution_graph":
+            return self.feature_circuits.trace(**arguments)
         if method not in self._attention_limits:
             raise ValueError(f"Unsupported circuit method: {method}")
         run = self.get_run(run_id)
@@ -436,6 +541,10 @@ class InspectionTools:
             evidence["raw_flow"] = raw_flow
         artifact_id = self.artifacts.save_array(method, matrix, ["query_token", "key_token"],
                                                 metric=method.replace("_", " ") + " mass", **evidence)
+        if raw_flow is not None:
+            graph = attention_flow_graph(self.forward.backend.tokenizer, positions, token_ids, query_position,
+                                         matrix[0], evidence, artifact_id)
+            evidence["graph_artifact_id"] = self.artifacts.save_records("circuit_graph", [graph])
         return {"artifact_id": artifact_id, **evidence}
 
     def read_artifact(self, artifact_id, region=None, offset=None, limit=None, workspace="primary"):
@@ -499,6 +608,46 @@ class InspectionTools:
         source_ids = [edit["value_artifact_id"] for edit in edits if "value_artifact_id" in edit]
         return self.versions.create_patch(parent_variant_id, edits, method, read_value, source_ids)
 
+    def project_weight(self, parent_variant_id, tensor, columns, direction=None, strength=1.0,
+                       direction_artifacts=None, sample_indices=None, token_position=None):
+        """从显式方向或两组同坐标激活构造方向，复用已有投影算法。"""
+        import torch
+
+        from .directions import contrast_direction
+
+        if (direction is None) == (direction_artifacts is None):
+            raise ValueError("Choose an explicit direction or exactly two activation artifacts")
+        sources = []
+        direction_id = None
+        if direction_artifacts is not None:
+            if len(direction_artifacts) != 2:
+                raise ValueError("Provide source and target activation artifacts")
+            data = [activation_rows(self.artifacts, ref, sample_indices, token_position) for ref in direction_artifacts]
+            allowed = self.forward.backend.projection_output_sites(tensor)
+            site_ids = [info["site_id"] for _, info, _, _ in data]
+            if len(set(site_ids)) != 1 or site_ids[0] not in allowed:
+                raise ValueError("Direction snapshots must share a verified output coordinate site for this weight")
+            if any(self.get_run(info["run_id"])["variant_id"] != parent_variant_id for _, info, _, _ in data):
+                raise ValueError("Direction snapshots must come from the selected parent variant")
+            direction = contrast_direction(*(torch.from_numpy(rows.copy()) for rows, _, _, _ in data))
+            sources = list(direction_artifacts)
+            direction_id = self.artifacts.save_array("contrast_direction", direction.numpy(), ["channel"],
+                site_id=site_ids[0], variant_id=parent_variant_id, source_artifact_ids=sources,
+                method="paired_mean_difference", sample_indices=data[0][2],
+                source_token_positions=data[0][3], target_token_positions=data[1][3])
+            sources.append(direction_id)
+        elif sample_indices is not None or token_position is not None:
+            raise ValueError("Sample and token selection apply to activation-derived directions")
+        result = project_weight(self.versions, parent_variant_id, tensor, direction, columns, strength, sources)
+        return {**result, "direction_artifact_id": direction_id}
+
+    def merge_updates(self, parent_variant_id, method, patch_ids=(), adapter_ids=(), **options):
+        """让原生 PEFT 导入和训练更新复用同一合并实现。"""
+        factors = [self.delta._adapter(adapter_id, parent_variant_id) for adapter_id in adapter_ids]
+        deltas = [{name: b @ a for name, (a, b) in update.items()} for update in factors]
+        return merge_updates(self.versions, parent_variant_id, patch_ids, method,
+                             adapter_deltas=deltas, adapter_ids=adapter_ids, **options)
+
     def prune_and_compensate(self, parent_variant_id, tensor, input_artifact_id, method,
                              sparsity=None, mask_artifact_id=None, relative_damping=0.01):
         """用同版本、同线性层的有效输入词元做校准。"""
@@ -514,7 +663,7 @@ class InspectionTools:
         site = self._sites.get(info.get("site_id"))
         if site is None or site["kind"] != "mlp" or values.ndim != 3:
             raise ValueError("Use a teacher-forced snapshot of the layer's MLP input")
-        module = self.forward.backend.layers[site["index"]].mlp.down_proj
+        module = self.forward.backend.linear_input_module(site["index"])
         if tensor != self._module_paths[id(module)] + ".weight":
             raise ValueError("Calibration input belongs to a different weight")
         run_id = info["run_id"]
@@ -553,6 +702,8 @@ class InspectionTools:
                       topk=0, token_logprobs=False, n=1, max_new_tokens=None):
         """把通用站点翻译成旧前向协议，复用预算、推理和落盘。"""
         self.versions.variant(variant_id)
+        if mode not in self.forward.backend.modes:
+            raise ValueError(f"Mode unavailable for this model: {mode}")
         sites = {}
         indices = {"hidden": [], "mlp": [], "mlp_out": [], "attention": []}
         for site_id in observe:
@@ -564,7 +715,7 @@ class InspectionTools:
             indices[kind].append(index)
         original = variant_id == self.variant_id
         request = {"type": mode, "model": "original" if original else "edited"}
-        if mode == "teacher_forced":
+        if mode in ("teacher_forced", "predict"):
             request["texts"] = texts
             request["return"] = {"hidden_states": indices["hidden"], "mlp_act": indices["mlp"],
                                  "attn_layers": indices["attention"], "topk": topk,
@@ -580,7 +731,7 @@ class InspectionTools:
         result = self.forward.request(request, variant_snapshot=snapshot)
         artifacts = self.artifacts.publish_forward(result, sites)
         summary = {key: result[key] for key in ("input_tokens", "executed_model_forwards",
-                                                "alignment", "summaries") if key in result}
+                                                "alignment", "summaries", "label_names") if key in result}
         return {"run_id": f"request_{result['attempt']:04d}", "variant_id": variant_id,
                 "status": "succeeded", "artifacts": artifacts, "summary": summary,
                 "usage": {"elapsed_seconds": result["elapsed_seconds"], "budget": result["budget"]}}
@@ -589,10 +740,11 @@ class InspectionTools:
 def open_inspection(model_dir, workspace, *, device="cpu", policy=None, revision=None, allow_edits=False,
                     allow_interventions=False, allow_gradients=False, practice=None, comparison=None,
                     training_data=None, allow_training=False, allow_python=False, kernel_python=None,
-                    fact_editor_python=None, fact_editor_source=None):
+                    fact_editor_python=None, fact_editor_source=None, quantization_python=None, slicegpt_python=None,
+                    circuit_tracer_python=None, peft_adapters=()):
     """从本地检查点打开研究工具，MCP 启动也调用此入口。"""
     import torch
-    from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
+    from transformers import AutoConfig, AutoModelForCausalLM, AutoModelForSequenceClassification, AutoTokenizer
 
     from .hf_backend import HuggingFaceBackend
 
@@ -613,15 +765,25 @@ def open_inspection(model_dir, workspace, *, device="cpu", policy=None, revision
     elif config.model_type in ("qwen3", "llama"):
         model = AutoModelForCausalLM.from_pretrained(model_dir, **load_options)
         backend_type = HuggingFaceBackend
+    elif config.model_type == "distilbert":
+        from .encoder_backend import DistilBertBackend
+
+        model = AutoModelForSequenceClassification.from_pretrained(model_dir, **load_options)
+        backend_type = DistilBertBackend
     else:
         raise ValueError(f"Unsupported model type: {config.model_type}")
     backend = backend_type(model.to(device), tokenizer, store)
-    grader = BoxedExactGrader() if practice is not None and practice.role == "development" else None
+    grader = BoxedExactGrader() if "generate" in backend.modes and practice is not None and practice.role == "development" else None
     if practice is None:
         practice = PracticeSet([], role="development", name="direct_inputs")
     forward = ForwardService(backend, store, practice, workspace / "forward", policy, grader)
-    return InspectionTools(forward, allow_edits=allow_edits, allow_interventions=allow_interventions,
+    tools = InspectionTools(forward, allow_edits=allow_edits, allow_interventions=allow_interventions,
                            allow_gradients=allow_gradients, comparison=comparison,
                            training_data=training_data, allow_training=allow_training,
                            allow_python=allow_python, kernel_python=kernel_python,
-                           fact_editor_python=fact_editor_python, fact_editor_source=fact_editor_source)
+                           fact_editor_python=fact_editor_python, fact_editor_source=fact_editor_source,
+                           quantization_python=quantization_python, slicegpt_python=slicegpt_python,
+                           circuit_tracer_python=circuit_tracer_python)
+    for adapter_dir in peft_adapters:
+        tools.registered_adapters.append(tools.delta.import_peft_adapter(tools.variant_id, adapter_dir))
+    return tools

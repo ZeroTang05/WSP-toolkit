@@ -62,3 +62,17 @@ def attention_flow(matrices, query_index):
     raw = np.array([nx.maximum_flow_value(graph, source, (0, token), flow_func=nx.algorithms.flow.edmonds_karp)
                     for token in range(width)])
     return (raw / raw.sum())[None, :], raw.tolist()
+
+
+def attention_flow_graph(tokenizer, positions, token_ids, query, scores, evidence, source_artifact_id):
+    """把逐词元最大流保存为可画的有向图。每条边汇总跨层结果。"""
+    decoded = tokenizer.batch_decode([[token] for token in token_ids])
+    labels = [f"{position} · {text.strip() or repr(text)}" for position, text in zip(positions, decoded)]
+    nodes = [{"id": "query", "label": labels[positions.index(query)], "level": 0, "token_position": query},
+             *[{"id": f"input_{position}", "label": label, "level": 1, "token_position": position}
+               for position, label in zip(positions, labels)]]
+    edges = [{"source": "query", "target": f"input_{position}", "score": float(score), "raw_flow": raw}
+             for position, score, raw in zip(positions, scores, evidence["raw_flow"]) if raw > 0]
+    return {"nodes": nodes, "edges": edges, "method": "attention_flow",
+            "evidence_type": evidence["evidence_type"], "source_artifact_id": source_artifact_id,
+            "source_run_id": evidence["source_run_id"], "through_layer": evidence["through_layer"]}

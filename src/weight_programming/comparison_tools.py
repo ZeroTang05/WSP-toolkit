@@ -58,7 +58,8 @@ class ComparisonTools:
 
     @staticmethod
     def _representation_rows(tools, variant_id, texts, sites):
-        run = tools.model_forward(variant_id, "teacher_forced", texts=texts, observe=sites)
+        mode = "teacher_forced" if tools.is_language_model else "predict"
+        run = tools.model_forward(variant_id, mode, texts=texts, observe=sites)
         keys = {entry.get("site_id"): entry["artifact_id"] for entry in run["artifacts"].values()}
         representations = []
         for site in sites:

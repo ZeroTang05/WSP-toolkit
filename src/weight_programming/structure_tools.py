@@ -1,7 +1,6 @@
 """复用深度和前馈通道剪枝，导出可独立重载的模型。"""
 
 from contextlib import nullcontext
-import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
@@ -9,15 +8,16 @@ from types import SimpleNamespace
 import torch
 
 from .isolated_model import load_variant, response_logprobs, supervised_ids
-from .patches import _digest
+from .compression_exports import ExternalCompression, publish_checkpoint
 
 
 class StructureTools:
     """用观测选择结构，再在独立模型上实际删层或删通道。"""
 
-    def __init__(self, tools):
+    def __init__(self, tools, *, quantization_python=None, slicegpt_python=None):
         self.tools = tools
         self.supported = tools.forward.backend.identity["model_type"] in ("llama", "qwen3")
+        self.external = ExternalCompression(tools, quantization_python, slicegpt_python)
 
     def _influence(self, variant_id, texts, drop_layers):
         from depth_programming import block_influence, choose_layers
@@ -73,8 +73,8 @@ class StructureTools:
                 "intermediate_size": len(kept[0]), "kept_channels": [indices.tolist() for indices in kept]}
 
     def compress_model(self, variant_id, method, calibration_texts=None, drop_layers=None,
-                       calibration_case_ids=None, fraction=None):
-        """输出真正改变张量形状的 Transformers 检查点。"""
+                       calibration_case_ids=None, fraction=None, group_size=128, target_hidden_size=None):
+        """输出改变张量形状或包含打包整数权重的检查点。"""
         from depth_programming import depth_variant
 
         tools = self.tools
@@ -83,6 +83,10 @@ class StructureTools:
             raise PermissionError("Structural export requires edit permission")
         if not self.supported:
             raise ValueError("Structural export requires a supported Llama or Qwen3 decoder")
+        if method in ("gptq", "awq"):
+            return self.external.quantize(variant_id, method, calibration_texts, group_size)
+        if method == "slicegpt":
+            return self.external.slice(variant_id, calibration_texts, target_hidden_size)
         if method == "block_influence":
             if not calibration_texts or drop_layers is None or calibration_case_ids is not None or fraction is not None:
                 raise ValueError("Block influence requires calibration texts and a drop layer count")
@@ -114,13 +118,6 @@ class StructureTools:
             record = {"variant_id": variant_id, "method": method, "details": details,
                       "original_parameters": original, "parameters": compressed, "layer_count": layers,
                       "checkpoint_bytes": sum(path.stat().st_size for path in output.glob("*.safetensors"))}
-            export_id = _digest(record)
-            (output / "structure_manifest.json").write_text(json.dumps(record, indent=2), encoding="utf-8")
-            with tools.versions._publish_lock():
-                destination = root / export_id
-                if not destination.exists():
-                    output.rename(destination)
-        checkpoint_path = f"exports/structures/{export_id}"
+            result = publish_checkpoint(tools.versions, output, record)
         preview = {key: value for key, value in details.items() if key != "kept_channels"}
-        return {**record, "details": preview, "export_id": export_id, "checkpoint_path": checkpoint_path,
-                "manifest_path": f"{checkpoint_path}/structure_manifest.json"}
+        return {**result, "details": preview}

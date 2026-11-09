@@ -16,8 +16,10 @@ _GENERATION_FIELDS = ("prompt_last", "answer_mean")
 
 def observation_axes(name):
     """按现有前向后端输出的含义标注各轴。"""
-    if name == "lengths":
+    if name in ("lengths", "predicted_label_ids"):
         return ["sample"]
+    if name in ("class_logits", "class_probabilities"):
+        return ["sample", "label"]
     if name.startswith("attention_"):
         return ["sample", "head", "query_token", "key_token"]
     if name.startswith("topk_"):
@@ -194,6 +196,7 @@ class ArtifactStore:
         values = np.where(np.isfinite(selected), selected.astype(object), None).tolist()
         fields = ("shape", "axes", "dtype", "site_id", "method", "evidence_type", "source_run_id", "variant_id",
                   "source_artifact_ids", "through_layer", "sample_index", "token_positions", "query_positions", "raw_flow",
-                  "encoder_id", "feature_ids", "source_workspaces", "dictionary_sha256")
+                  "encoder_id", "feature_ids", "source_workspaces", "dictionary_sha256", "train_indices",
+                  "evaluation_indices", "token_position", "cross_covariance_norms", "site_ids", "fitting", "estimator_names")
         metadata = {key: entry[key] for key in fields if key in entry}
         return {"kind": "array", **metadata, "region": bounds, "values": values}

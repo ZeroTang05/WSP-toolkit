@@ -27,7 +27,7 @@ def register_model(source, workspace, *, revision=None):
     store = WeightStore(model_dir, workspace / "edits")
     base = store.snapshot(with_edits=False)
     tokenizer_files = ("tokenizer.json", "tokenizer.model", "tokenizer_config.json", "vocab.json",
-                       "merges.txt", "special_tokens_map.json", "chat_template.jinja")
+                       "merges.txt", "vocab.txt", "special_tokens_map.json", "chat_template.jinja")
     tokenizer_hashes = {name: sha(model_dir / name) for name in tokenizer_files if (model_dir / name).is_file()}
     info = {"base_id": base["base_id"], "variant_id": base["variant_id"], "model_type": model_type,
             "source": origin, "tokenizer_files": tokenizer_hashes, "tensor_count": len(store.names)}

@@ -51,7 +51,7 @@ def indices(value,maximum,label):
 def validate_request(request,policy,num_layers,full_attention_layers):
     if not isinstance(request,dict):raise ValueError('Request object required')
     kind=request.get('type');model=request.get('model')
-    if kind not in ['generate','teacher_forced'] or model not in ['original','edited','both']:raise ValueError('Unknown request type/model')
+    if kind not in ['generate','teacher_forced','predict'] or model not in ['original','edited','both']:raise ValueError('Unknown request type/model')
     request=json.loads(json.dumps(request,allow_nan=False))
     if kind=='generate':
         if set(request)-{'type','model','problems','prompts','n','max_tokens','activations'}:raise ValueError('Unknown generation option; sampling policy is fixed')
@@ -87,6 +87,8 @@ def validate_request(request,policy,num_layers,full_attention_layers):
         if not isinstance(outputs,dict) or set(outputs)-{'token_logprobs','topk','hidden_states','mlp_act','mlp_out','attn_layers'}:raise ValueError('Unknown observation return')
         if type(outputs.get('token_logprobs',False))!=bool:raise ValueError('Log-prob flag must be boolean')
         outputs['token_logprobs']=outputs.get('token_logprobs',False);outputs['topk']=integer(outputs.get('topk',0),0,policy.max_topk,'top-k return')
+        if kind=='predict' and ('texts' not in request or outputs['token_logprobs'] or outputs['topk']):
+            raise ValueError('Classification accepts texts and class scores only')
         outputs['hidden_states']=indices(outputs.get('hidden_states',[]),num_layers,'residual layer')
         outputs['mlp_act']=indices(outputs.get('mlp_act',[]),num_layers-1,'MLP layer')
         if 'mlp_out' in outputs:outputs['mlp_out']=indices(outputs['mlp_out'],num_layers-1,'MLP output layer')

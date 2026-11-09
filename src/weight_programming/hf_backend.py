@@ -28,6 +28,8 @@ class PresencePenalty(LogitsProcessor):
 
 
 class HuggingFaceBackend:
+    modes = ("teacher_forced", "generate")
+
     def __init__(self,model,tokenizer,store,verify_tensors=True):
         if importlib.metadata.version('transformers')!='4.57.6':raise ValueError('This adapter is pinned to Transformers 4.57.6; add a separately verified adapter for other versions')
         if model.config.model_type not in ['qwen3','llama']:raise ValueError('Unimplemented model adapter; Qwen3.5 requires its own runtime')
@@ -61,6 +63,8 @@ class HuggingFaceBackend:
 
         def add(site_id, kind, index, width, modes, axes):
             sites[site_id] = {"site_id": site_id, "kind": kind, "index": index,
+                              "layer": (index - 1 if index else None) if kind == "hidden" else index,
+                              "port": "input" if kind == "mlp" else "output",
                               "width": width, "modes": modes, "axes": axes}
 
         add("embedding.out", "hidden", 0, self.hidden_size, both, channel_axes)
@@ -78,6 +82,23 @@ class HuggingFaceBackend:
         ids=self.tokenizer.encode(text,add_special_tokens=False)
         if not ids:raise ValueError('Empty tokenized text')
         return ids
+
+    def linear_input_module(self, layer):
+        """返回登记的前馈输入站点对应的线性模块。"""
+        return self.layers[layer].mlp.down_proj
+
+    def projection_output_sites(self, tensor):
+        """声明残差输出坐标中可投影的权重，避免仅凭相同宽度匹配。"""
+        for layer, block in enumerate(self.layers):
+            targets = [block.mlp.down_proj]
+            if layer in self.full_attention_layers:
+                targets.append(block.self_attn.o_proj)
+            if any(self.parameters.get(tensor) is module.weight for module in targets):
+                sites = [f"block.{layer}.residual_out"]
+                if self.parameters[tensor] is block.mlp.down_proj.weight:
+                    sites.append(f"block.{layer}.mlp.out")
+                return sites
+        return []
 
     def chat(self,messages,thinking,generate=False):
         return self.tokenizer.apply_chat_template(messages,tokenize=False,add_generation_prompt=generate,enable_thinking=thinking)

@@ -15,7 +15,7 @@ from .protocol import ForwardPolicy,BudgetLedger
 
 
 @contextlib.contextmanager
-def replace_activation(backend,kind,layer,clean,positions,channels=None,*,additive=False):
+def replace_activation(backend,kind,layer,clean,positions,channels=None,*,additive=False,transform=None):
     """Temporarily replace selected coordinates at one site, batch size one.
 
     Residual 0=embedding; residual l=raw block l-1 output. MLP input means the
@@ -37,7 +37,11 @@ def replace_activation(backend,kind,layer,clean,positions,channels=None,*,additi
         raise ValueError('Unique legal activation channels required')
     def patched(value):
         if value.shape!=clean.shape:raise ValueError('Corrupt/clean activation shapes differ')
-        output=value.clone();p=torch.tensor(positions,device=value.device);c=torch.tensor(channels,device=value.device)
+        output=value.clone();p=torch.tensor(positions,device=value.device)
+        if transform is not None:
+            output[0, p] = transform(value[0, p])
+            return output
+        c=torch.tensor(channels,device=value.device)
         reference=clean.to(value.device,dtype=value.dtype)
         index=(0,p[:,None],c[None,:])
         if additive:output[index]+=reference[index]
@@ -58,11 +62,16 @@ def replace_activation(backend,kind,layer,clean,positions,channels=None,*,additi
     finally:handle.remove()
 
 
-def metrics(logits,query,target,alternative):
-    row=logits[query].float();normalizer=torch.logsumexp(row,dim=-1)
-    return dict(logit_difference=float(row[target]-row[alternative]),
-        target_probability=float(torch.exp(row[target]-normalizer)),
-        target_log_probability=float(row[target]-normalizer))
+def token_metrics(row, target, alternative):
+    """在梯度筛选和精确干预中使用同一组可微分分数。"""
+    row = row.float()
+    log_probability = row[target] - torch.logsumexp(row, dim=-1)
+    return {"logit_difference": row[target] - row[alternative],
+            "target_probability": log_probability.exp(), "target_log_probability": log_probability}
+
+
+def metrics(logits, query, target, alternative):
+    return {name: float(value) for name, value in token_metrics(logits[query], target, alternative).items()}
 
 
 def prepare_pair(backend, policy, clean_text, corrupt_text, target_token, alternative_token, query_position=None):
@@ -107,7 +116,7 @@ def paired_interventions(backend, snapshot, pair, sites, target, alternative, re
             if method == "direction":
                 reference = site["shift"].reshape(1, 1, -1).expand_as(reference)
             with replace_activation(backend, kind, layer, reference, site["positions"], site.get("channels"),
-                                    additive=method == "direction"):
+                                    additive=method == "direction", transform=site.get("transform")):
                 logits, _ = read(corrupt_ids, [], [], [], True)
                 patched = metrics(logits, query, target, alternative)
                 del logits

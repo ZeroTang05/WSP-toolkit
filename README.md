@@ -1,8 +1,8 @@
 # WSP-toolkit
 
-**Inspect, edit, and evaluate open-weight language models.**
+**Give an AI model tools to inspect, edit, and evaluate another model.**
 
-WSP stands for **Weight-Space Programming**. The toolkit lets you read model weights and internal activations, make a targeted change, and compare the resulting behavior with the base model. Edits are saved separately, with a fingerprint that ties each edit to its source checkpoint.
+WSP stands for **Weight-Space Programming**. The toolkit wraps PyTorch, Hugging Face Transformers, Safetensors, PEFT, and established research methods into tools for AI clients and researchers. Read model weights and internal activations, make a targeted change, and compare the resulting behavior with the base model. Edits are saved separately, with a fingerprint that ties each edit to its source checkpoint.
 
 [中文说明](README.zh-CN.md) · [Getting started](docs/getting-started.md) · [MCP and Python tools](docs/mcp-tools.md) · [Benchmarks](docs/benchmarks.md) · [Releases](https://github.com/ZeroTang05/WSP-toolkit/releases)
 
@@ -13,11 +13,15 @@ WSP stands for **Weight-Space Programming**. The toolkit lets you read model wei
 | Read weights and save reversible edits | Read tensor slices and create, replay, export, or revert patches |
 | Observe a model processing text | Record activations and attention. Use heatmaps, layer predictions, attribution, or sparse feature dictionaries to inspect the results |
 | Measure what an internal component changes | Temporarily replace, zero, or shift selected activations and compare the model's output |
+| Trace a prediction through the model | Test residual paths with Path Patching and ACDC, estimate edges with EAP, or draw a Circuit Tracer feature graph |
 | Edit a model's factual associations | Create a ROME or MEMIT patch and measure how it changes the model's answers |
 | Compare models or compress updates | Compare weight changes, representations, and behavior. Merge updates with TIES or DARE, or compress them with a low-rank approximation |
-| Make a smaller model or train an update | Export a checkpoint with fewer layers or channels, or train a LoRA adapter on host-registered data |
+| Inspect a text classifier or import trained weights | Analyze DistilBERT class scores and snapshots, or import native PEFT LoRA adapters into the same update tools |
+| Make a smaller model or train an update | Export a checkpoint with fewer layers or channels, use SliceGPT or packed GPTQ and AWQ quantization, or train a LoRA adapter |
 
 The local Model Context Protocol (MCP) server and Python registry use the same tool definitions. Model adapters report which internal locations are available for each checkpoint. [Tool reference and examples](docs/mcp-tools.md)
+
+The design catalog covers 34 tool entries and 47 named methods. Capabilities are verified separately for Llama, Qwen3, Qwen3.5, and DistilBERT. [Design and method sources](research/wsp-toolkit-tool-design.md) · [Implementation and handoff](research/toolkit-implementation-audit.md)
 
 On Linux, an isolated Python session can retain variables across tool calls, read model snapshots, and propose a weight patch. [Persistent Python sessions](docs/mcp-tools.md#persistent-python-sessions)
 

@@ -91,6 +91,7 @@ class ForwardService:
     def request(self,raw,*,variant_snapshot=None):
         with self._lock:
             started=time.perf_counter();request=validate_request(raw,self.policy,self.backend.num_layers,self.backend.full_attention_layers)
+            if request['type'] not in self.backend.modes:raise ValueError('Mode unavailable for this model backend')
             original=self.store.snapshot(with_edits=False)
             if variant_snapshot is not None:
                 if request['model']=='original' or variant_snapshot['base_id']!=original['base_id']:
@@ -99,15 +100,18 @@ class ForwardService:
             else:
                 snapshot=original if request['model']=='original' else self.store.snapshot(with_edits=True)
             if request['type']=='teacher_forced':prepared=self.backend.prepare_teacher(request,self.policy)
+            elif request['type']=='predict':prepared=self.backend.prepare_predict(request,self.policy)
             else:prepared=self.backend.prepare_generation(self.practice.generation_items(request),request,self.policy)
             attempt=self.ledger.begin(request,snapshot['variant_id']);stage=self.work_dir/f'.request_{attempt:04d}.partial';output=self.work_dir/f'request_{attempt:04d}'
             created=False
             try:
                 if stage.exists() or output.exists():raise FileExistsError('Existing request artifacts require investigation')
                 stage.mkdir();created=True
-                if request['type']=='teacher_forced':
+                if request['type'] in ('teacher_forced','predict'):
                     selected=original if request['model']=='original' else snapshot
-                    with self.backend.activate(selected):result=self.backend.teacher_forced(request,prepared,stage)
+                    with self.backend.activate(selected):
+                        execute=self.backend.predict if request['type']=='predict' else self.backend.teacher_forced
+                        result=execute(request,prepared,stage)
                 else:
                     variants=['original','edited'] if request['model']=='both' else [request['model']];generated={};summaries={}
                     for variant in variants:
@@ -130,7 +134,14 @@ class ForwardService:
                 (stage/'meta.json').write_text(json.dumps(result,indent=2))
                 actual_bytes=sum(p.stat().st_size for p in stage.rglob('*') if p.is_file())
                 if actual_bytes>self.policy.max_return_bytes:raise ValueError('Actual artifact exceeds return quota')
-                stage.replace(output);self.ledger.finish(attempt,True,dict(artifact=output.name,elapsed_seconds=result['elapsed_seconds'],artifact_bytes=actual_bytes))
+                if request['type'] in ('teacher_forced','predict'):
+                    usage=dict(executed_model_forwards=result['executed_model_forwards'],input_tokens=result['input_tokens'],output_tokens=0)
+                else:
+                    records=[row for rows in generated.values() for row in rows]
+                    usage=dict(executed_model_forwards=sum(row['generation_model_forwards']+row['activation_replay_forwards'] for row in records),
+                        input_tokens=sum(row['input_tokens']+row['activation_replay_tokens'] for row in records),
+                        output_tokens=sum(row['output_tokens'] for row in records))
+                stage.replace(output);self.ledger.finish(attempt,True,dict(artifact=output.name,elapsed_seconds=result['elapsed_seconds'],artifact_bytes=actual_bytes,**usage))
                 return dict(result,artifact_dir=str(output),budget=self.ledger.summary())
             except Exception as error:
                 # A failed request must not expose partial uncharged observations.

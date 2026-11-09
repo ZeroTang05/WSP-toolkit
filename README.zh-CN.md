@@ -1,8 +1,8 @@
 # WSP-toolkit · 模型权重编程工具包
 
-**查看模型内部状态，修改指定权重，用同一套题检验效果。**
+**让大模型调用工具，查看、修改和评测另一个模型。**
 
-WSP 是 Weight-Space Programming（权重空间编程）的缩写。权重是模型运行时使用的数值。用这个工具包，你可以读出某一层的权重，观察模型处理输入时产生的中间数值，再把修改保存到单独的目录，方便和原模型比较。
+WSP 是 Weight-Space Programming（权重空间编程）的缩写。工具包把 PyTorch、Hugging Face Transformers、Safetensors、PEFT 等底层库和已有论文方法封装为大模型可以调用的工具。权重是模型运行时使用的数值。你可以读取权重，观察模型处理输入时的中间数值，再把修改保存成补丁，与原模型比较。
 
 [English（英文首页）](README.md) · [上手指南](docs/getting-started.md) · [工具与示例](docs/mcp-tools.md) · [完整实验结果](docs/benchmarks.md) · [下载发布包](https://github.com/ZeroTang05/WSP-toolkit/releases)
 
@@ -11,11 +11,15 @@ WSP 是 Weight-Space Programming（权重空间编程）的缩写。权重是模
 | 查看权重并保存可撤销的修改 | 读取张量切片，创建、重放、撤销或导出补丁 |
 | 看模型读到某段文字时内部发生了什么 | 记录激活和注意力，再查看热力图、逐层预测、词元归因或稀疏特征 |
 | 检验某个部件会不会影响答案 | 临时替换、清零或沿指定方向改变激活，测量输出变化 |
+| 追踪模型如何形成预测 | 用路径替换、ACDC 和 EAP 分析模块之间的连接，用 Circuit Tracer 画特征归因图 |
 | 修改模型对事实的回答倾向 | 用 ROME 或 MEMIT 生成权重补丁，再比较修改前后的回答 |
 | 比较模型并合并已有更新 | 比较权重、内部表示和回答。用 TIES 或 DARE 合并更新 |
-| 缩小模型或训练轻量更新 | 导出删层或删通道后的检查点，在登记的数据上训练 LoRA 适配器 |
+| 分析分类模型或导入微调权重 | 读取 DistilBERT 的分类分数与快照，导入原生 PEFT LoRA 适配器，复用分析、合并和压缩工具 |
+| 缩小模型或训练轻量更新 | 删层、删通道、用 SliceGPT 切片、用 GPTQ 或 AWQ 导出 4 位权重，或训练 LoRA 适配器 |
 
 研究者可以用 Python 调用，大模型可以通过 MCP（模型连接工具的协议）调用。两种入口共用工具定义，由模型适配器说明当前模型可以观察哪些位置。 [工具与示例](docs/mcp-tools.md)
+
+当前设计目录覆盖 **34 个工具条目、47 种具名方法**。Llama、Qwen3、Qwen3.5 和 DistilBERT 按实际能力分别接入。每种方法保留文献来源、实现位置和真实示例。 [详细设计](research/wsp-toolkit-tool-design.md) · [实现清单与交接](research/toolkit-implementation-audit.md)
 
 在 Linux 上，隔离的 Python 会话可以跨调用保留变量、读取模型快照，并提交权重补丁。 [隔离 Python 会话](docs/mcp-tools.md#persistent-python-sessions)
 

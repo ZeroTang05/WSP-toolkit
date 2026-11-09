@@ -58,8 +58,20 @@ async def main(model):
                 np.testing.assert_allclose(flow_values["values"][0], np.asarray(flow["raw_flow"]) / sum(flow["raw_flow"]))
                 flow_figure = await call("render_evidence", {"artifact_id": flow["artifact_id"], "view": "attention_heatmap"})
                 assert flow_figure["top_cells"][0]["token_positions"]["query_token"] == query
+                graph_id = flow["graph_artifact_id"]
+                graph, = (await call("read_artifact", {"artifact_id": graph_id}))["records"]
+                assert graph["source_artifact_id"] == flow["artifact_id"]
+                for edge in graph["edges"]:
+                    index = flow["token_positions"].index(int(edge["target"].removeprefix("input_")))
+                    assert edge["raw_flow"] == flow["raw_flow"][index]
+                    assert edge["score"] == flow_values["values"][0][index]
+                graph_figure = await call("render_evidence", {"artifact_id": graph_id, "view": "graph", "max_edges": 3})
+                assert graph_figure["source_artifact_id"] == graph_id and graph_figure["edges_rendered"] == 3
+                assert graph_figure["evidence_type"] == "descriptive_attention"
+                assert (Path(workspace) / graph_figure["plot_path"]).read_bytes().startswith(b"\x89PNG")
                 print(json.dumps({"model_type": description["model_type"], "observed_layers": len(layers),
                                   "rollout_shape": figure["shape"], "flow_shape": flow_figure["shape"],
+                                  "graph_edges": graph_figure["total_edges"], "graph_rendered": graph_figure["edges_rendered"],
                                   "evidence_type": result["evidence_type"]}))
 
 

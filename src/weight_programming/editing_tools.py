@@ -19,25 +19,30 @@ def _save(versions, parent_variant_id, replacements, method, source_ids=(), patc
                                  lambda edit: replacements[edit["tensor"]], source_ids, patch_ids)
 
 
-def project_weight(versions, parent_variant_id, tensor, direction, columns, strength=1.0):
+def project_weight(versions, parent_variant_id, tensor, direction, columns, strength=1.0, source_ids=()):
     """保留未选列，并把所选列沿指定方向的分量削弱。"""
     weight = versions.read_native(parent_variant_id, tensor)
     vector = torch.as_tensor(direction, dtype=torch.float32)
     replacement = project_output_direction(weight, vector, columns, strength)
-    result = _save(versions, parent_variant_id, {tensor: replacement}, "output_direction_projection")
+    result = _save(versions, parent_variant_id, {tensor: replacement}, "output_direction_projection", source_ids)
     realized = replacement.to(weight.dtype).double() - weight.double()
     return {**result, "columns": columns, "strength": strength, "realized_norm": float(realized.norm())}
 
 
 def merge_updates(versions, parent_variant_id, patch_ids, method, coefficients=None,
-                  density=None, target_norm=None, drop_probability=None, seed=None, dare_merge=None):
+                  density=None, target_norm=None, drop_probability=None, seed=None, dare_merge=None,
+                  adapter_deltas=(), adapter_ids=()):
     """将同一父版本上的补丁转成有效更新，再做加权或 TIES 合并。"""
     patches = [versions.patch_tensors(parent_variant_id, patch_id) for patch_id in patch_ids]
-    names = sorted({versions.groups[name][0] for patch in patches for name in patch})
+    if len(patches) + len(adapter_deltas) < 2:
+        raise ValueError("Provide at least two source patches or registered adapters")
+    names = sorted({versions.groups[name][0] for patch in [*patches, *adapter_deltas] for name in patch})
     parent_native = versions.read_tensors(parent_variant_id, names)
     parent = {name: value.float() for name, value in parent_native.items()}
     deltas = [{name: patch[name].float() - weight if name in patch else torch.zeros_like(weight)
                for name, weight in parent.items()} for patch in patches]
+    deltas.extend({name: delta[name].float() if name in delta else torch.zeros_like(weight)
+                   for name, weight in parent.items()} for delta in adapter_deltas)
     merge_rule = method
     dare_evidence = None
     if method == "dare":
@@ -74,10 +79,11 @@ def merge_updates(versions, parent_variant_id, patch_ids, method, coefficients=N
             raise ValueError("Norm matching requires a finite positive target and nonzero update")
         merged = {name: value * (target_norm / original_norm) for name, value in merged.items()}
     replacements = {name: weight + merged[name] for name, weight in parent.items()}
-    patch = _save(versions, parent_variant_id, replacements, method, patch_ids=patch_ids)
+    patch = _save(versions, parent_variant_id, replacements, method,
+                  source_ids=[f"updates/{adapter_id}" for adapter_id in adapter_ids], patch_ids=patch_ids)
     native = {name: value.to(parent_native[name].dtype).float() - parent[name]
               for name, value in replacements.items()}
-    return {**patch, "input_patch_ids": patch_ids, "merge_evidence": evidence,
+    return {**patch, "input_patch_ids": patch_ids, "input_adapter_ids": list(adapter_ids), "merge_evidence": evidence,
             "merged_norm": original_norm, "target_norm": target_norm, "realized_norm": _norm(native)}
 
 

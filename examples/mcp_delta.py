@@ -8,6 +8,8 @@ from tempfile import TemporaryDirectory
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
+import numpy as np
+import torch
 
 
 async def main(model):
@@ -52,10 +54,30 @@ async def main(model):
                 weighted = await call("compress_update", {**request, "method": "activation_weighted_svd",
                                                             "input_artifacts": inputs})
                 assert weighted["stored_parameters"] == compressed["stored_parameters"]
+                # 两组真实前馈输出给出同坐标的均值差，投影工具直接复用它们。
+                directions = []
+                for texts in (["The capital of France is", "The river flows into the sea."],
+                              ["The capital of Italy is", "The river runs into the lake."]):
+                    captured = await call("model_forward", {"variant_id": base, "mode": "teacher_forced",
+                        "texts": texts, "observe": ["block.0.mlp.out"]})
+                    directions.append(captured["artifacts"]["mlp_out_0"]["artifact_id"])
+                projected = await call("project_weight", {"parent_variant_id": base, "tensor": tensor,
+                    "columns": [0, 1], "direction_artifacts": directions})
+                unit = await call("read_artifact", {"artifact_id": projected["direction_artifact_id"]})
+                np.testing.assert_allclose(np.linalg.norm(unit["values"]), 1.0, atol=1e-12)
+                projection_variant = (await call("apply_patch", {"parent_variant_id": base,
+                    "patch_id": projected["patch_id"]}))["variant_id"]
+                bounds = [[0, first["shape"][0]], [0, 2]]
+                before = await call("read_tensor", {"variant_id": base, "name": tensor, "region": bounds})
+                after = await call("read_tensor", {"variant_id": projection_variant, "name": tensor, "region": bounds})
+                weight, vector = np.array(before["values"]), np.array(unit["values"])
+                expected = torch.tensor(weight - vector[:, None] * (vector @ weight)[None, :]).float()
+                dtype = {"BF16": torch.bfloat16, "F16": torch.float16, "F32": torch.float32}[before["dtype"]]
+                np.testing.assert_array_equal(after["values"], expected.to(dtype).float().numpy())
                 print(json.dumps({"tensor": tensor, "delta_norm": delta["delta_norm"],
                                   "singular_values": first["singular_values"],
                                   "stored_parameters": compressed["stored_parameters"],
-                                  "activation_weighted_rank": 1}, indent=2))
+                                  "activation_weighted_rank": 1, "activation_direction_projection": True}, indent=2))
 
 
 if __name__ == "__main__":

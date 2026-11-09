@@ -1,5 +1,6 @@
 """在已登记的权重坐标上分析与压缩模型更新。"""
 
+import json
 import math
 from collections import defaultdict
 from pathlib import Path
@@ -16,11 +17,69 @@ from .tensor_store import sha
 class DeltaTools:
     """复用候选分支和已有的低秩更新代数。"""
 
-    def __init__(self, versions, artifacts, input_rows):
+    def __init__(self, versions, artifacts, input_rows, backend):
         self.versions = versions
         self.artifacts = artifacts
         self.input_rows = input_rows
+        self.backend = backend
         self.updates = versions.root / "updates"
+        modules = {id(module): name for name, module in backend.model.named_modules()}
+        self.layer_prefixes = [(modules[id(layer)] + ".", index) for index, layer in enumerate(backend.layers)]
+
+    @torch.no_grad()
+    def import_peft_adapter(self, parent_variant_id, adapter_dir):
+        """由宿主导入原生线性 LoRA，沿用 PEFT 的缩放和转置语义。"""
+        from peft import LoraConfig, PeftConfig, PeftModel
+        from peft.tuners.lora.layer import Linear, LoraLayer
+        from peft.utils import get_peft_model_state_dict, load_peft_weights
+
+        from .isolated_model import load_variant
+
+        folder = Path(adapter_dir).expanduser().resolve(strict=True)
+        config = PeftConfig.from_pretrained(folder, local_files_only=True)
+        if not isinstance(config, LoraConfig) or (config.bias != "none" or config.modules_to_save
+                or config.layer_replication or config.target_parameters or config.trainable_token_indices
+                or config.lora_bias):
+            raise ValueError("Native import requires linear LoRA without extra base-weight or bias changes")
+        # 独立实例加载指定父版本，导入不会改变正在使用的模型。
+        base = load_variant(self.backend, self.versions, parent_variant_id, dtype=torch.float32)
+        adapter = PeftModel.from_pretrained(base, folder, config=config, local_files_only=True).eval()
+        saved = load_peft_weights(folder, device="cpu", local_files_only=True)
+        loaded = get_peft_model_state_dict(adapter, save_embedding_layers=False)
+        if set(saved) != set(loaded):
+            raise ValueError("Native adapter contains missing or unsupported state entries")
+        for key, value in saved.items():
+            if not torch.equal(value.float().cpu(), loaded[key].float().cpu()):
+                raise ValueError(f"Native adapter state did not load exactly: {key}")
+        pairs, details = {}, {}
+        for name, layer in adapter.get_base_model().named_modules():
+            if not isinstance(layer, LoraLayer):
+                continue
+            if not isinstance(layer, Linear) or layer.lora_variant:
+                raise ValueError(f"Native adapter type has no verified linear-factor conversion: {name}")
+            a = layer.lora_A["default"].weight.detach().float().cpu()
+            b = layer.lora_B["default"].weight.detach().float().cpu() * layer.scaling["default"]
+            if layer.fan_in_fan_out:
+                a, b = b.T, a.T
+            delta = layer.get_delta_weight("default").float().cpu()
+            torch.testing.assert_close(b @ a, delta, rtol=1e-5, atol=1e-7)
+            tensor = name + ".weight"
+            if list(delta.shape) != self.versions.store.tensor_info(tensor)["shape"]:
+                raise ValueError(f"Native adapter target does not match the checkpoint: {tensor}")
+            pairs[tensor] = (a.contiguous(), b.contiguous())
+            details[tensor] = {"scale": float(layer.scaling["default"]),
+                               "fan_in_fan_out": bool(layer.fan_in_fan_out), "rank": a.shape[0]}
+        if not pairs:
+            raise ValueError("Native adapter has no supported linear LoRA targets")
+        provenance = {"parent_variant_id": parent_variant_id, "source": str(folder),
+                      "source_files": {path.name: sha(path) for path in sorted(folder.iterdir()) if path.is_file()},
+                      "peft_config": json.loads((folder / "adapter_config.json").read_text(encoding="utf-8")),
+                      "targets": details}
+        adapter_id = self.publish_update(pairs, "native_peft_import", provenance,
+            method_provenance={"papers": ["https://arxiv.org/abs/2106.09685"],
+                               "implementation_grade": "PEFT native linear LoRA conversion"})
+        return {"adapter_id": adapter_id, "parent_variant_id": parent_variant_id,
+                "tensor_count": len(pairs), "targets": details}
 
     def _adapter(self, adapter_id, parent_variant_id):
         from delta_programming import load_effective
@@ -68,7 +127,8 @@ class DeltaTools:
 
     @torch.no_grad()
     def analyze_weight_delta(self, base_variant_id, variant_id=None, adapter_id=None, tensors=None,
-                             other_variant_id=None, direction_rank=0, input_artifacts=None):
+                             other_variant_id=None, direction_rank=0, input_artifacts=None,
+                             direction_solver="exact", direction_seed=11, direction_iterations=4):
         """返回原精度差分、更新方向及可选的局部输出变化。"""
         self.versions.variant(base_variant_id)
         if (variant_id is None) == (adapter_id is None):
@@ -104,9 +164,8 @@ class DeltaTools:
             row = {"tensor": name, "shape": list(base.shape), "dtype": str(base.dtype),
                    "changed": int(delta.ne(0).sum()), "delta_norm": math.sqrt(squared),
                    "relative_norm": math.sqrt(squared) / base_norm if base_norm else None}
-            match = re.search(r"(?:^|\.)layers\.([0-9]+)\.", name)
-            if match is not None:
-                layer = int(match.group(1))
+            layer = next((index for prefix, index in self.layer_prefixes if name.startswith(prefix)), None)
+            if layer is not None:
                 row["layer"] = layer
                 layers[layer]["tensors"] += 1
                 layers[layer]["changed_elements"] += row["changed"]
@@ -123,9 +182,25 @@ class DeltaTools:
                 dot += pair_dot
                 row["signed_delta_cosine"] = pair_dot / math.sqrt(squared * norm2) if squared and norm2 else None
             if direction_rank and squared and delta.ndim == 2:
-                u, s, vh = self._svd(delta)
+                if direction_solver == "exact":
+                    u, s, vh = self._svd(delta)
+                elif direction_solver == "randomized":
+                    if delta.numel() > 32_000_000:
+                        raise ValueError("Randomized direction analysis accepts at most 32M selected matrix values")
+                    # 使用 PyTorch 的随机低秩分解，固定种子并限制子空间迭代次数。
+                    with torch.random.fork_rng(devices=[]):
+                        torch.manual_seed(direction_seed)
+                        u, s, v = torch.svd_lowrank(delta, q=min(direction_rank + 8, min(delta.shape)),
+                                                   niter=direction_iterations)
+                    vh = v.T
+                else:
+                    raise ValueError("Choose exact or randomized direction decomposition")
                 count = min(direction_rank, s.numel())
                 row["singular_values"] = s[:count].tolist()
+                row["direction_decomposition"] = {"method": direction_solver, "rank": count,
+                    "seed": direction_seed if direction_solver == "randomized" else None,
+                    "iterations": direction_iterations if direction_solver == "randomized" else None,
+                    "residual_frobenius_norm": math.sqrt(max(0.0, squared - float(s[:count].square().sum())))}
                 row["output_directions"] = self.artifacts.save_array("directions", u[:, :count].T.numpy(),
                                                                      ["direction", "output"], tensor=name)
                 row["input_directions"] = self.artifacts.save_array("directions", vh[:count].numpy(),
@@ -198,18 +273,21 @@ class DeltaTools:
             raise ValueError("Activation-weighted compression requires one input artifact per target")
         if method == "truncated_svd" and input_artifacts:
             raise ValueError("Input artifacts are used only by activation-weighted compression")
+        if isinstance(rank, dict) and set(rank) != set(factors):
+            raise ValueError("Per-tensor rank budgets must cover exactly the selected update tensors")
         compressed, details = {}, {}
         for name, (a, b) in factors.items():
+            retained_rank = rank[name] if isinstance(rank, dict) else rank
             if method == "truncated_svd":
-                small_a, small_b, metrics = truncate(a, b, rank)
-                metrics["leading_singular_values"] = metrics.pop("singular_values")[:rank]
+                small_a, small_b, metrics = truncate(a, b, retained_rank)
+                metrics["leading_singular_values"] = metrics.pop("singular_values")[:retained_rank]
             else:
                 inputs = self.input_rows(parent_variant_id, name, input_artifacts[name]).double()
                 latent = inputs @ a.T
-                small_a, small_b, metrics = weighted_truncate(a, b, latent.T @ latent / len(latent), rank)
+                small_a, small_b, metrics = weighted_truncate(a, b, latent.T @ latent / len(latent), retained_rank)
             small_a, small_b = small_a.float(), small_b.float()
             compressed[name] = (small_a, small_b)
-            details[name] = {**metrics, "rank": rank, "source_update_norm": norm(a, b),
+            details[name] = {**metrics, "rank": retained_rank, "source_update_norm": norm(a, b),
                              "frobenius_error": residual(a, b, small_a, small_b),
                              "stored_parameters": small_a.numel() + small_b.numel()}
         provenance = {"parent_variant_id": parent_variant_id, "source_patch_id": patch_id,

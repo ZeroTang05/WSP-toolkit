@@ -66,6 +66,20 @@ async def main(model, dataset, attribution):
                     image = await call("render_evidence", {"artifact_id": report["artifact_id"], "view": "attribution_heatmap"})
                     assert (Path(workspace) / image["plot_path"]).is_file()
                     summary["integration_error"] = report["integration_error"]
+                    text, baseline = "The capital of France is", "The capital of Italy is"
+                    chosen, rejected = " Paris, France", " Rome"
+                    variant = model_info["variant_id"]
+                    preferences = await call("score_preferences", {"variant_id": variant, "reference_variant_id": variant,
+                        "pairs": [{"id": name, "prompt": prompt, "chosen": chosen, "rejected": rejected}
+                                  for name, prompt in (("input", text), ("baseline", baseline))]})
+                    attributed = await call("attribute_output", {"method": "contrastive_sequence", "variant_id": variant,
+                        "text": text, "baseline_text": baseline, "chosen": chosen, "rejected": rejected, "steps": 24})
+                    input_margin, baseline_margin = [row["margin"] for row in preferences["preview"]]
+                    assert abs(attributed["input_score"] - input_margin) < 0.05
+                    assert abs(attributed["baseline_score"] - baseline_margin) < 0.05
+                    assert abs(attributed["integration_error"]) < 0.1 * abs(attributed["score_change"])
+                    summary["answer_attribution"] = {"score_change": attributed["score_change"],
+                                                     "integration_error": attributed["integration_error"]}
                 print(json.dumps(summary, indent=2))
 
 
