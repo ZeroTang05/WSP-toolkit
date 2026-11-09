@@ -2,8 +2,10 @@
 
 from statistics import mean
 from time import perf_counter
+import math
 
 import numpy as np
+import torch
 
 from .patching import paired_interventions, prepare_pair
 from .tool_registry import ToolSpec, object_schema
@@ -31,11 +33,16 @@ class InterventionTools:
         """登记可以显式授权的两个工具。"""
         site_ids = {"type": "array", "items": _STRING, "uniqueItems": True}
         cases = {"type": "array", "items": _PAIR, "minItems": 1}
+        common = {"variant_id": _STRING, "site_id": _STRING, "pair": _PAIR,
+                  "channels": _POSITIONS, "metric": _METRIC}
+        usual = object_schema({**common, "method": {"enum": ["replace", "ablation"]}}, "variant_id", "site_id", "pair")
+        directed = object_schema({**common, "method": {"const": "direction"}, "strength": {"type": "number"},
+                                  "direction": {"type": "array", "items": {"type": "number"}, "minItems": 1, "maxItems": 32768},
+                                  "direction_artifact_id": _STRING}, "variant_id", "site_id", "pair", "method", "strength")
+        directed["oneOf"] = [{"required": ["direction"]}, {"required": ["direction_artifact_id"]}]
         return (
-            ToolSpec("run_intervention", "Measure an activation replacement or zero ablation at one site.",
-                     object_schema({"variant_id": _STRING, "site_id": _STRING, "pair": _PAIR,
-                                    "channels": _POSITIONS, "method": {"enum": ["replace", "ablation"]},
-                                    "metric": _METRIC}, "variant_id", "site_id", "pair"),
+            ToolSpec("run_intervention", "Measure activation replacement, zero ablation or direction injection.",
+                     {"type": "object", "oneOf": [usual, directed]},
                      self.run_intervention, permission="intervene",
                      output_schema={"type": "object", "required": ["run_id", "artifact_id", "effects"]}),
             ToolSpec("localize_behavior", "Scan observation sites using paired inputs and rank their measured effects.",
@@ -58,7 +65,7 @@ class InterventionTools:
         return {"kind": kinds[site["kind"]], "layer": site["index"], "channels": channels}
 
     def _run(self, variant_id, ids, pairs, metric, intervention, forward_budget, *, channels=None,
-             discovery_pairs=None, request_type):
+             discovery_pairs=None, request_type, shift=None, direction_evidence=None):
         backend, policy = self.forward.backend, self.forward.policy
         specs = [self._site(site_id, channels) for site_id in ids]
         pairs_prepared = [prepare_pair(backend, policy, pair["clean_text"], pair["corrupt_text"],
@@ -76,6 +83,8 @@ class InterventionTools:
         snapshot = self.versions.snapshot(variant_id)
         request = {"type": request_type, "metric": metric, "method": intervention, "site_ids": ids,
                    "pairs": pairs, "channels": channels, "discovery_pairs": discovery_pairs}
+        if direction_evidence is not None:
+            request["direction"] = direction_evidence
         ledger = self.forward.ledger
         attempt = ledger.begin(request, variant_id)
         run_id = f"request_{attempt:04d}"
@@ -90,7 +99,7 @@ class InterventionTools:
         try:
             results = []
             for pair, prepared in zip(pairs, pairs_prepared):
-                sites = [dict(spec, positions=pair["positions"], method=intervention) for spec in specs]
+                sites = [dict(spec, positions=pair["positions"], method=intervention, shift=shift) for spec in specs]
                 results.append(paired_interventions(backend, snapshot, prepared, sites,
                                                     pair["target_token"], pair["alternative_token"], read))
             effects = np.asarray([[item["effects"][metric]["patched_minus_corrupt"] for item in row]
@@ -107,10 +116,42 @@ class InterventionTools:
         return {"run_id": run_id, "variant_id": variant_id, "metric": metric,
                 "artifact_id": artifact_id, "usage": usage}, results
 
-    def run_intervention(self, variant_id, site_id, pair, method="replace", metric="logit_difference", channels=None):
+    def _direction(self, site_id, channels, strength, direction, artifact_id):
+        """把用户方向变成选定通道上的单位方向，再按强度缩放。"""
+        self._site(site_id, channels)
+        if strength is None or not math.isfinite(strength) or (direction is None) == (artifact_id is None):
+            raise ValueError("Direction injection needs one vector and a finite strength")
+        if artifact_id is not None:
+            array, metadata = self.artifacts.array(artifact_id)
+            if metadata["axes"] != ["channel"] or metadata.get("site_id", site_id) != site_id:
+                raise ValueError("Direction artifact must have the selected site's channel axis")
+            direction = array.copy()
+        vector = torch.as_tensor(direction, dtype=torch.float64)
+        if vector.shape != (self.sites[site_id]["width"],) or not torch.isfinite(vector).all():
+            raise ValueError("Direction must contain one finite value per channel")
+        selected = slice(None) if channels is None else channels
+        norm = float(vector[selected].norm())
+        if not 0 < norm < math.inf:
+            raise ValueError("Direction must have a finite nonzero norm on the selected channels")
+        shift = torch.zeros_like(vector, dtype=torch.float32)
+        shift[selected] = ((vector[selected] / norm) * strength).float()
+        if not torch.isfinite(shift).all():
+            raise ValueError("Scaled direction cannot be represented at runtime precision")
+        evidence = {"strength": strength, "input_norm": norm, "artifact_id": artifact_id}
+        if artifact_id is None:
+            evidence["values"] = vector.tolist()
+        return shift, evidence
+
+    def run_intervention(self, variant_id, site_id, pair, method="replace", metric="logit_difference", channels=None,
+                         direction=None, direction_artifact_id=None, strength=None):
         """返回一次干预的三个条件与差值。"""
+        shift = evidence = None
+        if method == "direction":
+            shift, evidence = self._direction(site_id, channels, strength, direction, direction_artifact_id)
         result, rows = self._run(variant_id, [site_id], [pair], metric, method, 3, channels=channels,
-                                 request_type="run_intervention")
+                                 request_type="run_intervention", shift=shift, direction_evidence=evidence)
+        if evidence is not None:
+            result["direction"] = {key: value for key, value in evidence.items() if key != "values"}
         return {**result, "site_id": site_id, "method": method, **rows[0][0]}
 
     def localize_behavior(self, variant_id, site_ids, pairs, metric="logit_difference", method="exact_scan",

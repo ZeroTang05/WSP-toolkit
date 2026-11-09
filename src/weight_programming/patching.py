@@ -15,7 +15,7 @@ from .protocol import ForwardPolicy,BudgetLedger
 
 
 @contextlib.contextmanager
-def replace_activation(backend,kind,layer,clean,positions,channels=None):
+def replace_activation(backend,kind,layer,clean,positions,channels=None,*,additive=False):
     """Temporarily replace selected coordinates at one site, batch size one.
 
     Residual 0=embedding; residual l=raw block l-1 output. MLP input means the
@@ -39,7 +39,9 @@ def replace_activation(backend,kind,layer,clean,positions,channels=None):
         if value.shape!=clean.shape:raise ValueError('Corrupt/clean activation shapes differ')
         output=value.clone();p=torch.tensor(positions,device=value.device);c=torch.tensor(channels,device=value.device)
         reference=clean.to(value.device,dtype=value.dtype)
-        output[0,p[:,None],c[None,:]]=reference[0,p[:,None],c[None,:]]
+        index=(0,p[:,None],c[None,:])
+        if additive:output[index]+=reference[index]
+        else:output[index]=reference[index]
         return output
     if kind=='mlp_input':
         module=backend.layers[layer].mlp.down_proj
@@ -99,9 +101,13 @@ def paired_interventions(backend, snapshot, pair, sites, target, alternative, re
         for site in sites:
             kind, layer = site["kind"], site["layer"]
             reference = captured[f"{'hidden' if kind == 'residual' else 'mlp'}_{layer}"]
-            if site.get("method") == "ablation":
+            method = site.get("method")
+            if method == "ablation":
                 reference = torch.zeros_like(reference)
-            with replace_activation(backend, kind, layer, reference, site["positions"], site.get("channels")):
+            if method == "direction":
+                reference = site["shift"].reshape(1, 1, -1).expand_as(reference)
+            with replace_activation(backend, kind, layer, reference, site["positions"], site.get("channels"),
+                                    additive=method == "direction"):
                 logits, _ = read(corrupt_ids, [], [], [], True)
                 patched = metrics(logits, query, target, alternative)
                 del logits

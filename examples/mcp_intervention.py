@@ -44,6 +44,21 @@ async def main(model, render):
                 assert replaced["patched"] == replaced["clean"]
                 ablated = await call("run_intervention", {**request, "method": "ablation"})
                 assert math.isfinite(ablated["patched"]["logit_difference"])
+                snapshots = await call("model_forward", {"variant_id": variant, "mode": "teacher_forced",
+                                                         "texts": [clean, corrupt], "observe": ["embedding.out"]})
+                position, = pair["positions"]
+                embeddings = snapshots["artifacts"]["hidden_0"]
+                width = embeddings["shape"][-1]
+                aligned = []
+                for sample in range(2):
+                    region = [[sample, sample + 1], [position, position + 1], [0, width]]
+                    row = await call("read_artifact", {"artifact_id": embeddings["artifact_id"], "region": region})
+                    aligned.append(row["values"][0][0])
+                direction = [positive - negative for positive, negative in zip(*aligned)]
+                strength = math.sqrt(sum(value * value for value in direction))
+                steered = await call("run_intervention", {**request, "method": "direction",
+                                                          "direction": direction, "strength": strength})
+                assert abs(steered["patched"]["logit_difference"] - replaced["clean"]["logit_difference"]) < 1e-5
                 scan = await call("localize_behavior", {"variant_id": variant, "pairs": [pair],
                                                         "site_ids": ["embedding.out", "block.0.residual_out"]})
                 assert scan["usage"]["executed_model_forwards"] == 4
@@ -65,6 +80,7 @@ async def main(model, render):
                         assert figure["bytes"] > 0
                 print(json.dumps({"replacement": replaced["effects"]["logit_difference"],
                                   "ablation": ablated["effects"]["logit_difference"],
+                                  "direction": steered["effects"]["logit_difference"],
                                   "scan_forwards": 4, "ranked_sites": scan["ranked_sites"],
                                   "rendered_heatmaps": render}, indent=2))
 

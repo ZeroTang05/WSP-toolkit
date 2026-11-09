@@ -12,11 +12,14 @@ WSP stands for **Weight-Space Programming**. The toolkit lets you read model wei
 |---|---|
 | Read weights and save reversible edits | Read tensor slices and create, replay, export, or revert patches |
 | Observe a model processing text | Record activations and attention. Use heatmaps, layer predictions, attribution, or sparse feature dictionaries to inspect the results |
-| Measure what an internal component changes | Temporarily replace or zero selected activations and compare the model's output |
+| Measure what an internal component changes | Temporarily replace, zero, or shift selected activations and compare the model's output |
+| Edit a model's factual associations | Create a ROME or MEMIT patch and measure how it changes the model's answers |
 | Compare models or compress updates | Compare weight changes, representations, and behavior. Merge updates with TIES or DARE, or compress them with a low-rank approximation |
 | Make a smaller model or train an update | Export a checkpoint with fewer layers or channels, or train a LoRA adapter on host-registered data |
 
 The local Model Context Protocol (MCP) server and Python registry use the same tool definitions. Model adapters report which internal locations are available for each checkpoint. [Tool reference and examples](docs/mcp-tools.md)
+
+On Linux, an isolated Python session can retain variables across tool calls, read model snapshots, and propose a weight patch. [Persistent Python sessions](docs/mcp-tools.md#persistent-python-sessions)
 
 The original Weight-Space Programming experiment inspired the isolated workspace and budgeted model tools. Activation patching, pruning, and update merging have their own method references and experiment settings. [Original research](https://rikiyat.github.io/blog/weight-space-programming/) · [Tool permissions and methods](docs/tool-permissions.md)
 

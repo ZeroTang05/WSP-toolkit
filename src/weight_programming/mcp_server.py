@@ -82,10 +82,18 @@ def main():
     parser.add_argument("--training-jsonl", type=Path, help="Host-authorized training cases with id and problem")
     parser.add_argument("--training-dataset-id", default="training", help="Name for the registered training dataset")
     parser.add_argument("--allow-training", action="store_true", help="Enable adapter training on the registered training set")
+    parser.add_argument("--allow-python", action="store_true", help="Enable the Linux bubblewrap CPU Python tool")
+    parser.add_argument("--kernel-python", type=Path, help="Optional virtualenv Python for the isolated kernel")
+    parser.add_argument("--fact-editor-python", type=Path, help="Python executable in the separate EasyEdit environment")
+    parser.add_argument("--fact-editor-source", type=Path, help="Source checkout of EasyEdit")
     parser.add_argument("--comparison-model", type=Path, help="Optional second local checkpoint for comparison")
     args = parser.parse_args()
     if args.allow_training and args.training_jsonl is None:
         parser.error("--allow-training requires --training-jsonl")
+    if (args.fact_editor_python is None) != (args.fact_editor_source is None):
+        parser.error("Provide both --fact-editor-python and --fact-editor-source")
+    if args.fact_editor_python is not None and not (args.allow_edits and args.allow_gradients):
+        parser.error("Fact editing requires --allow-edits and --allow-gradients")
     practice = load_cases(args.development_jsonl, "development", args.dataset_id)
     training_data = load_cases(args.training_jsonl, "train", args.training_dataset_id)
     with redirect_stdout(sys.stderr):
@@ -96,8 +104,11 @@ def main():
         tools = open_inspection(args.model, args.workspace, device=args.device, revision=args.revision,
                                 allow_edits=args.allow_edits, allow_interventions=args.allow_interventions,
                                 allow_gradients=args.allow_gradients, practice=practice, comparison=comparison,
-                                training_data=training_data, allow_training=args.allow_training)
-    anyio.run(serve, create_server(tools.registry))
+                                training_data=training_data, allow_training=args.allow_training,
+                                allow_python=args.allow_python, kernel_python=args.kernel_python,
+                                fact_editor_python=args.fact_editor_python, fact_editor_source=args.fact_editor_source)
+    with tools:
+        anyio.run(serve, create_server(tools.registry))
 
 
 if __name__ == "__main__":

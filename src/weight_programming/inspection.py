@@ -14,11 +14,13 @@ from .delta_tools import DeltaTools
 from .editing_tools import merge_updates, project_weight, prune_and_compensate
 from .evidence_tools import render_evidence
 from .evaluation_tools import BoxedExactGrader, EvaluationTools
+from .fact_tools import FactTools
 from .feature_tools import FeatureTools
 from .forward_service import ForwardService, PracticeSet
 from .intervention_tools import InterventionTools
 from .model_registry import register_model
 from .patches import VersionStore
+from .python_tools import ARRAY_PATTERN, RUN_PATTERN, SESSION_PATTERN, PythonTools
 from .representation_tools import RepresentationTools
 from .structure_tools import StructureTools
 from .tool_registry import ToolRegistry, ToolSpec, object_schema
@@ -41,13 +43,18 @@ class InspectionTools:
     """在一个由宿主注册的检查点上发现、运行和读取观测。"""
 
     def __init__(self, forward, *, allow_edits=False, allow_interventions=False, allow_gradients=False,
-                 comparison=None, training_data=None, allow_training=False):
+                 comparison=None, training_data=None, allow_training=False, allow_python=False, kernel_python=None,
+                 fact_editor_python=None, fact_editor_source=None):
         if training_data is not None and (training_data.role != "train" or not training_data.rows):
             raise ValueError("Register a nonempty training dataset with role=train")
         if allow_training and training_data is None:
             raise ValueError("Training permission requires a host-registered training dataset")
         if allow_training and find_spec("peft") is None:
             raise ValueError("Install the peft extra to enable adapter training")
+        if (fact_editor_python is None) != (fact_editor_source is None):
+            raise ValueError("Provide both the EasyEdit Python and source paths")
+        if fact_editor_python is not None and not (allow_edits and allow_gradients):
+            raise ValueError("Registering the fact editor requires edit and gradient permissions")
         self.forward = forward
         self.artifacts = ArtifactStore(forward.work_dir)
         self.versions = VersionStore(forward.work_dir.parent, forward.store, forward.backend.parameters)
@@ -80,6 +87,8 @@ class InspectionTools:
         self.representations = RepresentationTools(self)
         self.features = FeatureTools(self)
         self.attribution = AttributionTools(forward, self.versions, self.artifacts)
+        self.python = PythonTools(self, kernel_python) if allow_python else None
+        self.fact_editor = FactTools(self, fact_editor_python, fact_editor_source) if fact_editor_python else None
         permissions = {"observe"}
         if forward.practice.role == "development" and forward.grader is not None:
             permissions.add("evaluate")
@@ -89,6 +98,8 @@ class InspectionTools:
             permissions.add("intervene")
         if allow_training:
             permissions.add("train")
+        if allow_python:
+            permissions.add("python")
         if allow_gradients:
             if find_spec("captum") is None:
                 raise ValueError("Install the gradients extra to enable attribution")
@@ -115,6 +126,22 @@ class InspectionTools:
                           "not": {"anyOf": [{"required": ["value_artifact_id"]}, {"required": ["value_region"]}]}},
                          {"required": ["value_artifact_id"], "not": {"required": ["values"]}}]
         input_artifacts = {"type": "object", "additionalProperties": _ID}
+        python_specs = ()
+        if self.python is not None:
+            array_name = {"type": "string", "pattern": ARRAY_PATTERN}
+            named_inputs = {**input_artifacts, "propertyNames": array_name, "maxProperties": 8}
+            named_outputs = {"type": "object", "propertyNames": array_name, "maxProperties": 8,
+                             "additionalProperties": {**_SITES, "maxItems": 4}}
+            python_edit = object_schema({"tensor": _ID, "op": {"enum": ["add", "replace"]},
+                                         "region": array_region, "value": array_name}, "tensor", "op", "value")
+            python_specs = (ToolSpec("execute_python", "Run Python in a persistent isolated CPU session on one variant.",
+                                      object_schema({"session_id": {"type": "string", "pattern": SESSION_PATTERN},
+                                                     "variant_id": _ID, "code": {**_ID, "maxLength": 32_768},
+                                                     "input_artifacts": named_inputs, "outputs": named_outputs,
+                                                     "edits": {"type": "array", "items": python_edit, "maxItems": 16}},
+                                                    "session_id", "variant_id", "code"),
+                                      self.python.execute_python, permission="python",
+                                      output_schema=result_schema("run_id", "session_id", "status", "artifacts", "patch_id")),)
         preference_pair = object_schema({"id": _ID, "prompt": _ID, "chosen": _ID, "rejected": _ID},
                                         "id", "prompt", "chosen", "rejected")
         workspace = {"enum": ["primary", "comparison"]}
@@ -136,6 +163,23 @@ class InspectionTools:
             structures = (ToolSpec("compress_model", "Export a smaller checkpoint by deleting layers or MLP channels.",
                                    {"type": "object", "oneOf": structural_fields}, self.structures.compress_model,
                                    permission="edit", output_schema=result_schema("checkpoint_path", "parameters", "layer_count")),)
+        fact_editing = ()
+        if self.fact_editor is not None:
+            fact_text = {**_ID, "maxLength": 2048}
+            fact = object_schema({"subject": fact_text, "prompt": fact_text,
+                                  "target_true": fact_text, "target_new": fact_text},
+                                 "subject", "prompt", "target_true", "target_new")
+            positive_number = {"type": "number", "exclusiveMinimum": 0}
+            fact_editing = (ToolSpec("edit_facts", "Propose a ROME or MEMIT patch using a host-configured EasyEdit runtime.",
+                                     object_schema({"parent_variant_id": _ID, "method": {"enum": ["rome", "memit"]},
+                                                    "facts": {"type": "array", "items": fact, "minItems": 1, "maxItems": 8},
+                                                    "layers": {"type": "array", "items": _INDEX, "minItems": 1, "maxItems": 6, "uniqueItems": True},
+                                                    "calibration_texts": {**_TEXTS, "maxItems": 32},
+                                                    "steps": {**_POSITIVE, "maximum": 64}, "learning_rate": positive_number,
+                                                    "relative_damping": positive_number, "mom2_weight": positive_number},
+                                                   "parent_variant_id", "method", "facts", "layers", "calibration_texts"),
+                                     self.fact_editor.edit_facts, permission="edit",
+                                     output_schema=result_schema("patch_id", "report_artifact_id", "changed_elements")),)
         sample_indices = {"type": "array", "items": _INDEX, "minItems": 1, "uniqueItems": True}
         feature_options = {"sample_indices": {**sample_indices, "maxItems": 128}, "token_position": _INDEX,
                            "feature_ids": {**sample_indices, "maxItems": 32},
@@ -178,6 +222,7 @@ class InspectionTools:
                                self.trace_circuit,
                                output_schema=result_schema("artifact_id", "evidence_type", "source_run_id", "source_artifact_ids")),)
         return (
+            *python_specs,
             ToolSpec("describe_model", "List the registered checkpoint and its available observation sites.",
                      object_schema({"variant_id": _ID, "workspace": workspace}), self.describe_model,
                      output_schema=result_schema("variant_id", "model_type", "layers", "sites")),
@@ -268,6 +313,7 @@ class InspectionTools:
                                    "parent_variant_id", "rank"), self.delta.compress_update, permission="edit",
                      output_schema=result_schema("adapter_id", "stored_parameters", "report_artifact_id")),
             *structures,
+            *fact_editing,
             ToolSpec("train_update", "Train an adapter on authorized data using LoRA, DPO, distillation or pruning recovery.",
                      object_schema({"parent_variant_id": _ID, "dataset_id": _ID, "case_ids": training_ids,
                                     "targets": training_ids,
@@ -349,6 +395,8 @@ class InspectionTools:
                            for layer in range(backend.num_layers)],
                 "sites": deepcopy(list(self._sites.values())), "weight_editing": self.allow_edits,
                 "activation_interventions": self.allow_interventions,
+                "python_execution": self.python is not None,
+                "fact_editing_methods": ["rome", "memit"] if self.fact_editor is not None else [],
                 "feature_dictionaries": self.features.available(variant["variant_id"]),
                 "gradients": self.allow_gradients,
                 "training_dataset_id": self.training_data.name
@@ -479,6 +527,8 @@ class InspectionTools:
         """查询本工作区账本上的运行状态。"""
         if workspace != "primary":
             return self.workspace_tools(workspace).get_run(run_id)
+        if re.fullmatch(RUN_PATTERN, run_id):
+            return PythonTools.get_run(self.versions.root, run_id)
         if not re.fullmatch(r"request_[0-9]+", run_id):
             raise ValueError("Invalid run ID")
         number = int(run_id.removeprefix("request_"))
@@ -487,6 +537,17 @@ class InspectionTools:
         row = self.forward.ledger.lookup(number)
         return {"run_id": run_id, "variant_id": row["variant_id"], "status": row["status"],
                 "usage": row.get("details", {}), "artifacts": self.artifacts.references(run_id)}
+
+    def close(self):
+        """回收由当前工具实例启动的隔离进程。"""
+        if self.python is not None:
+            self.python.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self.close()
 
     def model_forward(self, variant_id, mode, texts=None, prompts=None, observe=(),
                       topk=0, token_logprobs=False, n=1, max_new_tokens=None):
@@ -527,7 +588,8 @@ class InspectionTools:
 
 def open_inspection(model_dir, workspace, *, device="cpu", policy=None, revision=None, allow_edits=False,
                     allow_interventions=False, allow_gradients=False, practice=None, comparison=None,
-                    training_data=None, allow_training=False):
+                    training_data=None, allow_training=False, allow_python=False, kernel_python=None,
+                    fact_editor_python=None, fact_editor_source=None):
     """从本地检查点打开研究工具，MCP 启动也调用此入口。"""
     import torch
     from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
@@ -560,4 +622,6 @@ def open_inspection(model_dir, workspace, *, device="cpu", policy=None, revision
     forward = ForwardService(backend, store, practice, workspace / "forward", policy, grader)
     return InspectionTools(forward, allow_edits=allow_edits, allow_interventions=allow_interventions,
                            allow_gradients=allow_gradients, comparison=comparison,
-                           training_data=training_data, allow_training=allow_training)
+                           training_data=training_data, allow_training=allow_training,
+                           allow_python=allow_python, kernel_python=kernel_python,
+                           fact_editor_python=fact_editor_python, fact_editor_source=fact_editor_source)

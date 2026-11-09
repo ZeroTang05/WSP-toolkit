@@ -15,10 +15,18 @@ import subprocess
 import time
 
 
+MAX_CELL_ARRAY_BYTES = 32 * 1024**2
+
+
 class CPUKernel:
+    @staticmethod
+    def supported():
+        """检查是否具备用于真实隔离的 Linux 运行时。"""
+        return os.name == 'posix' and Path('/proc').exists() and shutil.which('bwrap') is not None
+
     def __init__(self, model_dir, practice_dir, work_dir, control_dir, *,
-                 python=None, executions=300, seconds=900, memory_gib=96):
-        if os.name!='posix' or not Path('/proc').exists() or not shutil.which('bwrap'):
+                 python=None, executions=300, seconds=900, memory_gib=96, versioned=False):
+        if not self.supported():
             raise RuntimeError('Linux bubblewrap required for this isolated kernel')
         if not 1<=executions<=300 or not 0<seconds<=900 or not 1<=memory_gib<=96:
             raise ValueError('Execution limits exceed the original protocol')
@@ -58,6 +66,7 @@ class CPUKernel:
             if Path(lib).exists():command+=['--ro-bind',lib,lib]
         if Path('/etc/ld.so.cache').exists():command+=['--ro-bind','/etc/ld.so.cache','/etc/ld.so.cache']
         command+=['--chdir','/work','/runtime/bin/python','-u','-m','weight_programming.kernel_worker',str(memory_gib)]
+        if versioned:command.append('versioned')
         self.process=subprocess.Popen(command,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=False,env={})
         self.buffer=b'';self.selector=selectors.DefaultSelector();self.selector.register(self.process.stdout,selectors.EVENT_READ)
         self._write_ledger('initializing')
@@ -88,7 +97,7 @@ class CPUKernel:
         line,self.buffer=self.buffer.split(b'\n',1)
         return json.loads(line)
 
-    def execute(self,code):
+    def execute(self,code,*,context=None):
         if self.dead or self.process.poll() is not None:raise RuntimeError('Kernel is not live; variables are lost')
         if self.count>=self.limit:raise RuntimeError('Kernel execution budget exhausted')
         if not isinstance(code,str) or not code.strip():raise ValueError('Nonempty code required')
@@ -96,7 +105,9 @@ class CPUKernel:
         (self.control/f'cell_{self.count:04d}.py').write_text(code)
         self._write_ledger('executing')
         try:
-            self.process.stdin.write((json.dumps(dict(code=code))+'\n').encode());self.process.stdin.flush()
+            request = {'code': code}
+            if context is not None:request['context'] = context
+            self.process.stdin.write((json.dumps(request)+'\n').encode());self.process.stdin.flush()
             result=self._read(self.seconds)
         except BaseException:
             self.close();self._write_ledger('lost_variables');raise
