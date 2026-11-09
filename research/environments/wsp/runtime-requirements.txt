@@ -1,0 +1,9 @@
+# Separate environment only. Keep the existing 4.57.6 experiment runtime intact.
+# Install torch==2.5.1 from https://download.pytorch.org/whl/cu121 first.
+torch==2.5.1
+transformers==5.3.0
+safetensors==0.8.0
+numpy==1.26.4
+math-verify==0.9.0
+latex2sympy2_extended==1.11.0
+antlr4-python3-runtime==4.13.2

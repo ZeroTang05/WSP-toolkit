@@ -41,7 +41,7 @@ For a controlled comparison, freeze the edit and keep the questions, prompt, sam
 - **Python API.** The `weight_programming` package contains the reusable tools for weight operations, model observations, and evaluation.
 - **Research scripts.** The `src/run_*.py` scripts run specific experiments and expect the models, data views, or trained updates described in their command help. Use `PYTHONPATH=src python src/run_ties_study.py --help` to see one example.
 - **Method contracts.** The files under `contracts/` and the tool permissions guide describe how each operation relates to the research method. [Tool permissions](tool-permissions.md)
-- **Tool design and implementation.** Each catalog entry records its sources, implementation, and runnable examples. [Detailed design](../research/wsp-toolkit-tool-design.md) · [Implementation and handoff](../research/toolkit-implementation-audit.md)
+- **Tool design and implementation.** Each catalog entry records its sources, implementation, and runnable examples. [Detailed design](tool-design.md) · [Implementation and handoff](tool-inventory.md)
 
 ## 5. Check your installation
 

@@ -1,0 +1,1303 @@
+{
+  "version": "design-catalog-2026-11-09",
+  "kind": "research_design_not_executable_method_registry",
+  "principle": "每项能力共用一个工具 ID，复用现有代码。模型适配、任务配置和算法方法分别登记。",
+  "design_document": "docs/tool-design.md",
+  "portability": {
+    "capability_discovery": "describe_model",
+    "boundary": "适配器登记站点、张量轴、输入输出和运行能力。分析方法按输入产物及权限开放。",
+    "validation_matrix": [
+      {
+        "architecture": "llama",
+        "scope": "attention_rollout",
+        "status": "verified",
+        "example": "examples/mcp_attention_rollout.py"
+      },
+      {
+        "architecture": "qwen3",
+        "scope": "attention_rollout",
+        "status": "verified",
+        "example": "examples/mcp_attention_rollout.py"
+      },
+      {
+        "architecture": "qwen3_5",
+        "scope": "hybrid_attention_observation",
+        "status": "verified_backend",
+        "evidence": "research/reports/qwen35-observation-study.md"
+      },
+      {
+        "architecture": "distilbert",
+        "scope": "sequence_classification_snapshot_and_probe",
+        "status": "verified",
+        "checkpoint": "distilbert/distilbert-base-uncased-finetuned-sst-2-english",
+        "example": "examples/mcp_classification.py"
+      }
+    ]
+  },
+  "interfaces": {
+    "agent_protocol": "MCP",
+    "research_api": "Python",
+    "shared_tool_definitions": true,
+    "shared_python_execution": true,
+    "mcp_status": "local_permission_profiles",
+    "mcp_discovery": "tools/list",
+    "mcp_call": "tools/call",
+    "default_profile": "read_only",
+    "initial_read_only_flow": [
+      "describe_model",
+      "model_forward",
+      "read_artifact"
+    ],
+    "available_mcp_tools": [
+      "describe_model",
+      "model_forward",
+      "read_artifact",
+      "list_tensors",
+      "read_tensor",
+      "get_run",
+      "analyze_weight_delta",
+      "compare_models",
+      "extract_features",
+      "score_preferences",
+      "scan_lens"
+    ],
+    "capability_dependent_mcp_tools": {
+      "trace_circuit": "注意力分析需连续可观测的普通自注意力。路径替换和 ACDC 需 Llama 或 Qwen3 和临时干预授权，EAP 另需梯度授权。特征归因需梯度授权、Circuit Tracer 环境和绑定版本的逐层特征字典。见 describe_model.trace_circuit_methods。",
+      "compress_model": "需要编辑授权。Taylor 另需梯度授权与训练数据。GPTQ 和 AWQ 需登记独立 LLM Compressor 环境，SliceGPT 需独立上游环境和 Llama 检查点。",
+      "edit_facts": "需登记独立 EasyEdit 环境和源码，开放编辑与梯度权限。接入口面向 Llama 和 Qwen3，真实验证覆盖 SmolLM2。"
+    },
+    "opt_in_mcp_tools": {
+      "edit": [
+        "create_patch",
+        "apply_patch",
+        "revert_patch",
+        "export_patch",
+        "import_patch",
+        "export_model",
+        "project_weight",
+        "merge_updates",
+        "prune_and_compensate",
+        "compress_update",
+        "compress_model",
+        "edit_facts"
+      ],
+      "intervene": [
+        "run_intervention",
+        "localize_behavior",
+        "trace_circuit.path_patching",
+        "trace_circuit.acdc",
+        "trace_circuit.eap"
+      ],
+      "evaluate": [
+        "evaluate_variants"
+      ],
+      "gradient": [
+        "attribute_output",
+        "trace_circuit.eap",
+        "trace_circuit.feature_attribution_graph"
+      ],
+      "train": [
+        "train_update"
+      ],
+      "python": [
+        "execute_python"
+      ]
+    },
+    "optional_dependency_tools": {
+      "analysis": [
+        "render_evidence",
+        "probe_representation",
+        "trace_circuit.attention_flow"
+      ],
+      "concepts": [
+        "probe_representation.fit_eraser",
+        "run_intervention.concept_erasure"
+      ],
+      "gradients": [
+        "attribute_output"
+      ],
+      "peft": [
+        "train_update",
+        "host_native_adapter_import"
+      ]
+    }
+  },
+  "status_definitions": {
+    "agent_tool": "现有原作分发器已提供此入口。",
+    "reuse_and_expose": "核心功能或可执行脚本已存在，计划共用接口。",
+    "extend_existing": "复用现有服务，补充新的计算方法。",
+    "new_method": "核心方法尚待接入或实现。",
+    "local_read_only": "当前源码的只读服务已提供此入口。",
+    "host_registration": "由宿主在 Python 或 MCP 启动时登记模型。",
+    "local_opt_in": "当前本地服务在宿主明确授权后提供此入口。",
+    "local_analysis_extra": "当前本地服务安装 analysis 可选依赖后提供此入口。",
+    "host_development_dataset": "宿主明确登记开发数据后提供此入口。"
+  },
+  "legacy_design_names": {
+    "run_forward": "model_forward",
+    "run_python": "execute_python",
+    "capture_activations": "model_forward: observation option",
+    "train_role_update": "train_update"
+  },
+  "common_objects": [
+    "ModelRef",
+    "VariantRef",
+    "TensorRef",
+    "PatchRef",
+    "SiteRef",
+    "SnapshotRef",
+    "MetricSpec",
+    "EvidenceRef",
+    "RunRef"
+  ],
+  "tools": [
+    {
+      "id": "execute_python",
+      "family": "runtime",
+      "sequence": 1,
+      "status": "local_opt_in",
+      "existing_sources": [
+        "src/weight_programming/tool_api.py",
+        "src/weight_programming/cpu_kernel.py",
+        "src/weight_programming/programming_session.py",
+        "src/weight_programming/python_tools.py"
+      ],
+      "references": [
+        "https://rikiyat.github.io/blog/weight-space-programming/",
+        "https://github.com/openwsp/openwsp/blob/8d09276736034f6874bb40e7019247c9541a5551/docs/architecture.md"
+      ],
+      "next": "已接入 Linux 隔离会话、候选权重、数组交换和补丁发布。用真实 Qwen3-0.6B 核对两次调用的变量、候选权重和只读挂载。",
+      "validation": {
+        "checkpoint": "Qwen/Qwen3-0.6B",
+        "example": "examples/mcp_python.py",
+        "runtime": "Linux bubblewrap CPU"
+      }
+    },
+    {
+      "id": "model_forward",
+      "family": "runtime",
+      "sequence": 1,
+      "status": "local_read_only",
+      "existing_sources": [
+        "src/weight_programming/tool_api.py",
+        "src/weight_programming/forward_service.py",
+        "src/weight_programming/hf_backend.py",
+        "src/weight_programming/qwen35_backend.py",
+        "src/weight_programming/encoder_backend.py"
+      ],
+      "references": [
+        "https://rikiyat.github.io/blog/weight-space-programming/",
+        "https://arxiv.org/abs/2407.14561",
+        "https://arxiv.org/abs/2403.07809",
+        "https://docs.pytorch.org/docs/stable/generated/torch.nn.Module.html"
+      ],
+      "next": "已接入基座和候选版本。生成后端使用生成与给定文本评分，DistilBERT 使用分类预测并复用快照、读数、绘图和探针。"
+    },
+    {
+      "id": "register_model",
+      "family": "runtime",
+      "sequence": 1,
+      "status": "host_registration",
+      "existing_sources": [
+        "src/weight_programming/tensor_store.py"
+      ],
+      "references": [
+        "https://huggingface.co/docs/huggingface_hub/en/guides/download",
+        "https://huggingface.co/docs/safetensors/index"
+      ],
+      "next": "宿主可登记本地检查点或固定提交的 Hub 仓库；当前工作区绑定一份基座。"
+    },
+    {
+      "id": "describe_model",
+      "family": "runtime",
+      "sequence": 1,
+      "status": "local_read_only",
+      "existing_sources": [
+        "src/weight_programming/hf_backend.py",
+        "src/weight_programming/qwen35_backend.py",
+        "src/weight_programming/encoder_backend.py"
+      ],
+      "references": [
+        "https://github.com/openwsp/openwsp/blob/8d09276736034f6874bb40e7019247c9541a5551/docs/mcp.md",
+        "https://docs.pytorch.org/docs/stable/generated/torch.nn.Module.html"
+      ],
+      "next": "已接入基座和登记的候选版本。"
+    },
+    {
+      "id": "list_tensors",
+      "family": "weights",
+      "sequence": 1,
+      "status": "local_read_only",
+      "existing_sources": [
+        "src/weight_programming/tensor_store.py"
+      ],
+      "references": [
+        "https://github.com/openwsp/openwsp/blob/8d09276736034f6874bb40e7019247c9541a5551/docs/mcp.md",
+        "https://huggingface.co/docs/safetensors/index"
+      ],
+      "next": "已接入基座和登记的候选版本。"
+    },
+    {
+      "id": "read_tensor",
+      "family": "weights",
+      "sequence": 1,
+      "status": "local_read_only",
+      "existing_sources": [
+        "src/weight_programming/tensor_store.py"
+      ],
+      "references": [
+        "https://github.com/openwsp/openwsp/blob/8d09276736034f6874bb40e7019247c9541a5551/docs/mcp.md",
+        "https://huggingface.co/docs/safetensors/index"
+      ],
+      "next": "已接入基座和登记的候选版本。"
+    },
+    {
+      "id": "create_patch",
+      "family": "weights",
+      "sequence": 1,
+      "status": "local_opt_in",
+      "existing_sources": [
+        "src/weight_programming/tensor_store.py",
+        "src/weight_programming/patches.py"
+      ],
+      "references": [
+        "https://rikiyat.github.io/blog/weight-space-programming/",
+        "https://github.com/openwsp/openwsp/blob/8d09276736034f6874bb40e7019247c9541a5551/docs/edit-format.md"
+      ],
+      "next": "已原子发布整组原精度替换张量，接收小切片或数组产物。"
+    },
+    {
+      "id": "apply_patch",
+      "family": "weights",
+      "sequence": 1,
+      "status": "local_opt_in",
+      "existing_sources": [
+        "src/weight_programming/tensor_store.py",
+        "src/weight_programming/hf_backend.py",
+        "src/weight_programming/patches.py"
+      ],
+      "references": [
+        "https://github.com/openwsp/openwsp/blob/8d09276736034f6874bb40e7019247c9541a5551/docs/mcp.md"
+      ],
+      "next": "已校验父张量及共享权重，登记可运行的候选。"
+    },
+    {
+      "id": "revert_patch",
+      "family": "weights",
+      "sequence": 1,
+      "status": "local_opt_in",
+      "existing_sources": [
+        "src/weight_programming/tensor_store.py",
+        "src/weight_programming/patches.py"
+      ],
+      "references": [
+        "https://github.com/openwsp/openwsp/blob/8d09276736034f6874bb40e7019247c9541a5551/docs/architecture.md"
+      ],
+      "next": "已返回父版本，供下一次读取或运行。"
+    },
+    {
+      "id": "export_patch",
+      "family": "weights",
+      "sequence": 1,
+      "status": "local_opt_in",
+      "existing_sources": [
+        "src/weight_programming/tensor_store.py",
+        "src/weight_programming/patches.py"
+      ],
+      "references": [
+        "https://github.com/openwsp/openwsp/blob/8d09276736034f6874bb40e7019247c9541a5551/docs/edit-format.md",
+        "https://huggingface.co/docs/safetensors/index"
+      ],
+      "next": "已输出可搬运的清单与 Safetensors 文件。"
+    },
+    {
+      "id": "import_patch",
+      "family": "weights",
+      "sequence": 1,
+      "status": "local_opt_in",
+      "existing_sources": [
+        "src/weight_programming/tensor_store.py",
+        "src/weight_programming/patches.py"
+      ],
+      "references": [
+        "https://github.com/openwsp/openwsp/blob/8d09276736034f6874bb40e7019247c9541a5551/docs/edit-format.md",
+        "https://huggingface.co/docs/safetensors/index"
+      ],
+      "next": "已在新工作区验证补丁并按同父版本重放。"
+    },
+    {
+      "id": "export_model",
+      "family": "weights",
+      "sequence": 1,
+      "status": "local_opt_in",
+      "existing_sources": [
+        "src/weight_programming/tensor_store.py",
+        "src/weight_programming/hf_backend.py",
+        "src/structure_bundle.py",
+        "src/weight_programming/patches.py"
+      ],
+      "references": [
+        "https://huggingface.co/docs/transformers/en/main_classes/model"
+      ],
+      "next": "已导出完整 Transformers 检查点并验证重载。"
+    },
+    {
+      "id": "read_artifact",
+      "family": "evidence",
+      "sequence": 1,
+      "status": "local_read_only",
+      "existing_sources": [
+        "src/weight_programming/programming_session.py",
+        "src/weight_programming/forward_service.py"
+      ],
+      "references": [
+        "https://github.com/openwsp/openwsp/blob/8d09276736034f6874bb40e7019247c9541a5551/docs/mcp.md"
+      ],
+      "next": "已读取前向和干预数值、生成记录及图表引用。"
+    },
+    {
+      "id": "get_run",
+      "family": "evidence",
+      "sequence": 1,
+      "status": "local_read_only",
+      "existing_sources": [
+        "src/weight_programming/protocol.py"
+      ],
+      "references": [],
+      "next": "已接入前向运行状态、用量和产物。"
+    },
+    {
+      "id": "list_tools",
+      "family": "runtime",
+      "sequence": 1,
+      "status": "local_read_only",
+      "existing_sources": [
+        "src/weight_programming/tool_api.py"
+      ],
+      "references": [
+        "https://modelcontextprotocol.io/specification/2026-07-28/server/tools"
+      ],
+      "next": "已由同一登记表提供 Python 查询与 MCP 原生 tools/list。"
+    },
+    {
+      "id": "run_intervention",
+      "family": "intervention",
+      "sequence": 1,
+      "status": "local_opt_in",
+      "existing_sources": [
+        "src/weight_programming/patching.py",
+        "src/weightlab.py",
+        "src/weight_programming/intervention_tools.py"
+      ],
+      "references": [
+        "https://arxiv.org/abs/2309.16042",
+        "https://arxiv.org/abs/2403.07809",
+        "https://arxiv.org/abs/2312.06681",
+        "https://arxiv.org/abs/2306.03819"
+      ],
+      "next": "已支持激活替换、置零消融、方向注入和 LEACE 线性概念移除。",
+      "methods": [
+        {
+          "id": "replace",
+          "status": "available_tool"
+        },
+        {
+          "id": "ablation",
+          "status": "available_tool"
+        },
+        {
+          "id": "direction",
+          "status": "available_tool",
+          "references": [
+            "https://arxiv.org/abs/2312.06681"
+          ],
+          "validation": {
+            "checkpoint": "HuggingFaceTB/SmolLM2-135M-Instruct",
+            "example": "examples/mcp_intervention.py"
+          }
+        },
+        {
+          "id": "concept_erasure",
+          "status": "available_tool",
+          "depends_on": [
+            "probe_representation"
+          ],
+          "requires": [
+            "activation_intervention",
+            "aligned_labeled_training_snapshot"
+          ],
+          "references": [
+            "https://arxiv.org/abs/2306.03819",
+            "https://github.com/EleutherAI/concept-erasure"
+          ],
+          "validation": {
+            "checkpoint": "HuggingFaceTB/SmolLM2-135M-Instruct",
+            "example": "examples/mcp_concept_erasure.py",
+            "dataset": "UD English EWT r2.17"
+          }
+        }
+      ]
+    },
+    {
+      "id": "localize_behavior",
+      "family": "intervention",
+      "sequence": 1,
+      "status": "local_opt_in",
+      "existing_sources": [
+        "src/run_activation_patching_study.py",
+        "src/programming_probe.py",
+        "src/weight_programming/patching.py",
+        "src/weight_programming/intervention_tools.py",
+        "src/weight_programming/attribution_patching.py"
+      ],
+      "references": [
+        "https://arxiv.org/abs/2309.16042",
+        "https://arxiv.org/abs/2403.00745"
+      ],
+      "next": "支持精确扫描，以及残差和前馈输入站点的 AtP* GradDrop 筛选与精确复核。",
+      "methods": [
+        {
+          "id": "exact_scan",
+          "status": "available_tool",
+          "delegate": "run_intervention.replace"
+        },
+        {
+          "id": "atp_star",
+          "status": "available_tool",
+          "scope": "residual_and_mlp_input_sites_with_grad_drop",
+          "requires": [
+            "allow_interventions",
+            "allow_gradients",
+            "llama_or_qwen3_decoder"
+          ],
+          "validation": {
+            "checkpoint": "HuggingFaceTB/SmolLM2-135M-Instruct",
+            "example": "examples/mcp_intervention.py",
+            "flag": "--atp-star"
+          }
+        }
+      ]
+    },
+    {
+      "id": "render_evidence",
+      "family": "evidence",
+      "sequence": 1,
+      "status": "local_analysis_extra",
+      "existing_sources": [
+        "src/analyze_activation_patching.py",
+        "src/analyze_layer_observations.py",
+        "src/weight_programming/evidence_tools.py"
+      ],
+      "references": [
+        "https://aclanthology.org/2021.acl-demo.30/",
+        "https://aclanthology.org/P19-3007/",
+        "https://arxiv.org/abs/2008.05122"
+      ],
+      "next": "已实测五类热力图和注意力最大流有向图。有向图共用节点和边的记录格式。",
+      "methods": [
+        {
+          "id": "activation_heatmap",
+          "status": "available_tool"
+        },
+        {
+          "id": "patching_heatmap",
+          "status": "available_tool"
+        },
+        {
+          "id": "attention_heatmap",
+          "status": "available_tool"
+        },
+        {
+          "id": "similarity_heatmap",
+          "status": "available_tool"
+        },
+        {
+          "id": "graph",
+          "status": "available_tool",
+          "depends_on": [
+            "trace_circuit"
+          ],
+          "requires": [
+            "node_and_edge_artifact"
+          ],
+          "validation": {
+            "checkpoint": "HuggingFaceTB/SmolLM2-135M-Instruct",
+            "example": "examples/mcp_attention_rollout.py",
+            "evidence_type": "descriptive_attention"
+          }
+        },
+        {
+          "id": "attribution_heatmap",
+          "status": "available_tool"
+        }
+      ]
+    },
+    {
+      "id": "analyze_weight_delta",
+      "family": "analysis",
+      "sequence": 1,
+      "status": "local_read_only",
+      "existing_sources": [
+        "src/weight_programming/directions.py",
+        "src/analyze_delta.py",
+        "src/weight_programming/delta_tools.py"
+      ],
+      "references": [
+        "https://arxiv.org/abs/2212.04089",
+        "https://arxiv.org/abs/2106.09685",
+        "https://github.com/openwsp/openwsp/blob/8d09276736034f6874bb40e7019247c9541a5551/src/openwsp/inspection.py"
+      ],
+      "next": "已验证同基座候选、WSP 更新和原生 PEFT LoRA；保存实际缩放、原精度舍入、精确或随机低秩方向及误差。",
+      "validation": {
+        "checkpoint": "HuggingFaceTB/SmolLM2-135M-Instruct",
+        "examples": [
+          "examples/mcp_delta.py",
+          "examples/mcp_native_peft.py"
+        ],
+        "native_format": "PEFT linear LoRA"
+      }
+    },
+    {
+      "id": "project_weight",
+      "family": "editing",
+      "sequence": 1,
+      "status": "local_opt_in",
+      "existing_sources": [
+        "src/weight_programming/directions.py",
+        "src/weight_programming/editing_tools.py"
+      ],
+      "references": [
+        "https://rikiyat.github.io/blog/weight-space-programming/",
+        "https://arxiv.org/abs/2406.11717"
+      ],
+      "next": "支持显式方向和两组成对激活的均值差，验证父版本及实际输出坐标，再生成同一格式的投影补丁。"
+    },
+    {
+      "id": "merge_updates",
+      "family": "editing",
+      "sequence": 1,
+      "status": "local_opt_in",
+      "existing_sources": [
+        "src/weight_programming/merging.py",
+        "src/delta_programming.py",
+        "src/weight_programming/editing_tools.py"
+      ],
+      "references": [
+        "https://arxiv.org/abs/2212.04089",
+        "https://arxiv.org/abs/2203.05482",
+        "https://arxiv.org/abs/2306.01708",
+        "https://arxiv.org/abs/2311.03099"
+      ],
+      "next": "同父版本补丁与已登记的 LoRA 更新共用任务向量加权、TIES 和 DARE。原生 PEFT 经宿主导入后使用同一接口。",
+      "methods": [
+        {
+          "id": "task_arithmetic",
+          "status": "available_tool"
+        },
+        {
+          "id": "ties",
+          "status": "available_tool"
+        },
+        {
+          "id": "dare",
+          "status": "available_tool",
+          "validation": {
+            "checkpoint": "HuggingFaceTB/SmolLM2-135M-Instruct",
+            "example": "examples/mcp_patch.py"
+          }
+        }
+      ]
+    },
+    {
+      "id": "prune_and_compensate",
+      "family": "editing",
+      "sequence": 1,
+      "status": "local_opt_in",
+      "existing_sources": [
+        "src/prune_public.py",
+        "src/paper_methods.py",
+        "src/weight_programming/reconstruction.py",
+        "src/weight_programming/editing_tools.py"
+      ],
+      "references": [
+        "https://arxiv.org/abs/2306.11695",
+        "https://arxiv.org/abs/2301.00774"
+      ],
+      "next": "已支持观测到的 MLP 输入上的 Wanda、固定掩码补偿及自适应 SparseGPT。",
+      "methods": [
+        {
+          "id": "wanda",
+          "status": "available_tool"
+        },
+        {
+          "id": "sparsegpt_fixed_mask",
+          "status": "available_tool"
+        },
+        {
+          "id": "sparsegpt_adaptive",
+          "status": "available_tool"
+        }
+      ]
+    },
+    {
+      "id": "compress_update",
+      "family": "editing",
+      "sequence": 1,
+      "status": "local_opt_in",
+      "existing_sources": [
+        "src/delta_programming.py",
+        "src/programming_probe.py",
+        "src/weight_programming/delta_tools.py"
+      ],
+      "references": [
+        "https://arxiv.org/abs/2106.09685",
+        "https://arxiv.org/abs/2403.07378"
+      ],
+      "next": "普通和输入加权低秩截断支持统一秩或逐张量秩预算，可按需生成补丁。",
+      "methods": [
+        {
+          "id": "truncated_svd",
+          "status": "available_tool"
+        },
+        {
+          "id": "activation_weighted_svd",
+          "status": "available_tool"
+        }
+      ]
+    },
+    {
+      "id": "evaluate_variants",
+      "family": "evaluation",
+      "sequence": 1,
+      "status": "host_development_dataset",
+      "existing_sources": [
+        "src/weight_programming/forward_service.py",
+        "src/weight_programming/evaluation.py",
+        "src/benchmark_runner.py",
+        "src/profile_variant.py",
+        "src/weight_programming/evaluation_tools.py"
+      ],
+      "references": [
+        "https://github.com/EleutherAI/lm-evaluation-harness"
+      ],
+      "next": "已在宿主登记的真实 GSM8K 样本上验证配对生成、带框答案匹配、逐样本记录和区间。"
+    },
+    {
+      "id": "compare_models",
+      "family": "analysis",
+      "sequence": 2,
+      "status": "local_read_only",
+      "existing_sources": [
+        "src/weight_programming/directions.py",
+        "src/analyze_delta.py",
+        "src/weight_programming/forward_service.py",
+        "src/weight_programming/evaluation.py",
+        "src/weight_programming/comparison_tools.py"
+      ],
+      "references": [
+        "https://proceedings.mlr.press/v97/kornblith19a.html",
+        "https://arxiv.org/abs/2209.04836",
+        "https://transformer-circuits.pub/2025/crosscoder-diffing-update/"
+      ],
+      "next": "已验证同基座差分、开发集行为、联合字典和跨架构线性 CKA；DistilBERT 与 SmolLM2 使用相同文本的各自末词元表示。",
+      "methods": [
+        {
+          "id": "weight_delta",
+          "status": "available_tool",
+          "delegate": "analyze_weight_delta"
+        },
+        {
+          "id": "linear_cka",
+          "status": "available_tool"
+        },
+        {
+          "id": "behavior",
+          "status": "available_tool",
+          "delegate": "evaluate_variants"
+        },
+        {
+          "id": "crosscoder",
+          "status": "available_tool",
+          "delegate": "extract_features.crosscoder"
+        }
+      ]
+    },
+    {
+      "id": "score_preferences",
+      "family": "analysis",
+      "sequence": 2,
+      "status": "local_read_only",
+      "existing_sources": [
+        "src/weight_programming/forward_service.py",
+        "src/weight_programming/evaluation_tools.py"
+      ],
+      "references": [
+        "https://arxiv.org/abs/2305.18290"
+      ],
+      "next": "已验证给定回答的候选及参考分差、按词元求和与归因报告的读取。"
+    },
+    {
+      "id": "scan_lens",
+      "family": "analysis",
+      "sequence": 2,
+      "status": "local_read_only",
+      "existing_sources": [
+        "src/weight_programming/hf_backend.py",
+        "src/weight_programming/representation_tools.py"
+      ],
+      "references": [
+        "https://arxiv.org/abs/2303.08112"
+      ],
+      "next": "支持直接读出和绑定模型版本及站点的调优透镜，两种读出在最终层一致。",
+      "methods": [
+        {
+          "id": "logit_lens",
+          "status": "available_tool"
+        },
+        {
+          "id": "tuned_lens",
+          "status": "available_tool",
+          "validation": {
+            "checkpoint": "HuggingFaceTB/SmolLM2-135M-Instruct",
+            "example": "examples/tuned_lens.py",
+            "dataset": "GSM8K training-source prompts with disjoint fitting and review rows"
+          }
+        }
+      ]
+    },
+    {
+      "id": "probe_representation",
+      "family": "analysis",
+      "sequence": 2,
+      "status": "local_analysis_extra",
+      "existing_sources": [
+        "src/weight_programming/representation_tools.py"
+      ],
+      "references": [
+        "https://aclanthology.org/D19-1275/",
+        "https://aclanthology.org/2021.tacl-1.10/",
+        "https://arxiv.org/abs/2306.03819"
+      ],
+      "next": "已验证独立样本上的线性探针、控制标签、输入基线和 LEACE 变换。"
+    },
+    {
+      "id": "attribute_output",
+      "family": "analysis",
+      "sequence": 2,
+      "status": "local_opt_in",
+      "existing_sources": [
+        "src/weight_programming/hf_backend.py",
+        "src/weight_programming/attribution_tools.py"
+      ],
+      "references": [
+        "https://proceedings.mlr.press/v70/sundararajan17a.html",
+        "https://captum.ai/api/integrated_gradients.html",
+        "https://aclanthology.org/2023.acl-demo.40/"
+      ],
+      "next": "启用梯度并安装 Captum 后，可归因单词元分数或两段答案的分差。",
+      "methods": [
+        {
+          "id": "integrated_gradients",
+          "status": "available_tool"
+        },
+        {
+          "id": "contrastive_sequence",
+          "status": "available_tool",
+          "depends_on": [
+            "score_preferences",
+            "attribute_output.integrated_gradients"
+          ],
+          "requires": [
+            "embedding_gradients",
+            "differentiable_sequence_score",
+            "aligned_input_positions"
+          ],
+          "references": [
+            "https://aclanthology.org/2023.acl-demo.40/",
+            "https://aclanthology.org/2022.emnlp-main.14/"
+          ],
+          "validation": {
+            "checkpoint": "HuggingFaceTB/SmolLM2-135M-Instruct",
+            "example": "examples/mcp_representation.py",
+            "score_cross_check": "score_preferences"
+          }
+        }
+      ]
+    },
+    {
+      "id": "compress_model",
+      "family": "editing",
+      "sequence": 2,
+      "status": "local_opt_in",
+      "existing_sources": [
+        "src/prune_structured.py",
+        "src/structure_bundle.py",
+        "src/depth_programming.py",
+        "src/weight_programming/structure_tools.py",
+        "src/weight_programming/compression_exports.py",
+        "src/weight_programming/quantization_worker.py",
+        "src/weight_programming/slicegpt_worker.py"
+      ],
+      "references": [
+        "https://arxiv.org/abs/2305.11627",
+        "https://arxiv.org/abs/2403.03853",
+        "https://arxiv.org/abs/2401.15024",
+        "https://arxiv.org/abs/2210.17323",
+        "https://arxiv.org/abs/2306.00978"
+      ],
+      "next": "已实测通道剪枝、删层、SliceGPT 切片和 GPTQ／AWQ 打包量化。五种方法的导出均已重新加载并执行。",
+      "validation": {
+        "checkpoint": "HuggingFaceTB/SmolLM2-135M-Instruct",
+        "example": "examples/mcp_training.py"
+      },
+      "methods": [
+        {
+          "id": "taylor_mlp",
+          "status": "available_tool",
+          "requires": [
+            "edit_permission",
+            "gradient_permission",
+            "registered_training_data",
+            "bias_free_gated_mlp"
+          ]
+        },
+        {
+          "id": "block_influence",
+          "status": "available_tool",
+          "requires": [
+            "edit_permission",
+            "layer_residual_snapshots",
+            "structural_export"
+          ]
+        },
+        {
+          "id": "slicegpt",
+          "status": "available_tool",
+          "requires": [
+            "edit_permission",
+            "llama_decoder",
+            "independent_slicegpt_runtime"
+          ],
+          "references": [
+            "https://arxiv.org/abs/2401.15024",
+            "https://github.com/microsoft/TransformerCompression/tree/183cd92d8469bf3f1e979585a08dc382692bfbed"
+          ],
+          "validation": {
+            "checkpoint": "HuggingFaceTB/SmolLM2-135M-Instruct",
+            "example": "examples/mcp_slicegpt.py",
+            "scope": "saved shape and forward after strict reload"
+          }
+        },
+        {
+          "id": "gptq",
+          "status": "available_tool",
+          "requires": [
+            "edit_permission",
+            "independent_llmcompressor_runtime",
+            "calibration_texts"
+          ],
+          "validation": {
+            "checkpoint": "HuggingFaceTB/SmolLM2-135M-Instruct",
+            "example": "examples/mcp_quantization.py",
+            "scope": "packed int4 and forward after CPU reload"
+          }
+        },
+        {
+          "id": "awq",
+          "status": "available_tool",
+          "requires": [
+            "edit_permission",
+            "independent_llmcompressor_runtime",
+            "calibration_texts"
+          ],
+          "validation": {
+            "checkpoint": "HuggingFaceTB/SmolLM2-135M-Instruct",
+            "example": "examples/mcp_quantization.py",
+            "scope": "packed asymmetric int4 and forward after CPU reload"
+          }
+        }
+      ]
+    },
+    {
+      "id": "train_update",
+      "family": "editing",
+      "sequence": 2,
+      "status": "local_opt_in",
+      "existing_sources": [
+        "src/specialize.py",
+        "src/paper_methods.py",
+        "src/delta_bank.py",
+        "src/peft_bank.py",
+        "src/weight_programming/training_tools.py"
+      ],
+      "references": [
+        "https://arxiv.org/abs/2106.09685",
+        "https://arxiv.org/abs/2305.18290",
+        "https://arxiv.org/abs/1503.02531",
+        "https://aclanthology.org/D16-1139/"
+      ],
+      "next": "四种方法已通过真实一步训练，保存可重载的 PEFT 文件及通用更新因子。任务效果另做对照实验。",
+      "validation": {
+        "checkpoint": "HuggingFaceTB/SmolLM2-135M-Instruct",
+        "example": "examples/mcp_training.py"
+      },
+      "methods": [
+        {
+          "id": "lora",
+          "status": "available_tool"
+        },
+        {
+          "id": "dpo",
+          "status": "available_tool"
+        },
+        {
+          "id": "distillation",
+          "status": "available_tool"
+        },
+        {
+          "id": "post_pruning_recovery",
+          "status": "available_tool",
+          "depends_on": [
+            "compress_model"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "extract_features",
+      "family": "analysis",
+      "sequence": 3,
+      "status": "local_read_only",
+      "existing_sources": [
+        "src/weight_programming/feature_tools.py",
+        "src/weight_programming/hf_backend.py",
+        "src/weight_programming/comparison_tools.py"
+      ],
+      "references": [
+        "https://transformer-circuits.pub/2024/scaling-monosemanticity/",
+        "https://arxiv.org/abs/2406.04093",
+        "https://arxiv.org/abs/2408.05147",
+        "https://arxiv.org/abs/2503.09532",
+        "https://huggingface.co/EleutherAI/sae-SmolLM2-135M-64x",
+        "https://transformer-circuits.pub/2024/crosscoders/index.html",
+        "https://transformer-circuits.pub/2025/crosscoder-diffing-update/"
+      ],
+      "next": "已支持读取稀疏字典与双模型联合字典，返回强响应词元和重建误差。已实测公开 TopK 字典与真实候选的 ReLU 联合字典。",
+      "methods": [
+        {
+          "id": "sae",
+          "status": "available_tool",
+          "depends_on": [
+            "model_forward",
+            "read_artifact"
+          ],
+          "requires": [
+            "dictionary_bound_to_variant_and_site",
+            "matching_activation_axes_and_normalization"
+          ],
+          "validation": {
+            "checkpoint": "HuggingFaceTB/SmolLM2-135M",
+            "dictionary": "EleutherAI/sae-SmolLM2-135M-64x/layers.3.mlp",
+            "example": "examples/mcp_features.py"
+          }
+        },
+        {
+          "id": "crosscoder",
+          "status": "available_tool",
+          "depends_on": [
+            "model_forward",
+            "read_artifact"
+          ],
+          "requires": [
+            "joint_dictionary_bound_to_both_variants_and_sites",
+            "aligned_input_token_sequences"
+          ],
+          "validation": {
+            "checkpoint": "HuggingFaceTB/SmolLM2-135M-Instruct",
+            "dictionary": "local real checkpoint-and-patch fit",
+            "example": "examples/mcp_features.py"
+          }
+        }
+      ]
+    },
+    {
+      "id": "trace_circuit",
+      "family": "analysis",
+      "sequence": 3,
+      "status": "local_read_only",
+      "existing_sources": [
+        "src/weight_programming/circuit_tools.py",
+        "src/weight_programming/inspection.py",
+        "src/weight_programming/patching.py",
+        "src/weight_programming/circuit_interventions.py",
+        "src/weight_programming/edge_tracing.py",
+        "src/weight_programming/feature_circuits.py",
+        "src/weight_programming/feature_circuit_worker.py"
+      ],
+      "references": [
+        "https://aclanthology.org/2020.acl-main.385/",
+        "https://arxiv.org/abs/2304.05969",
+        "https://arxiv.org/abs/2304.14997",
+        "https://arxiv.org/abs/2310.10348",
+        "https://arxiv.org/abs/2406.11944",
+        "https://transformer-circuits.pub/2025/attribution-graphs/methods.html",
+        "https://aclanthology.org/2025.blackboxnlp-1.14/"
+      ],
+      "next": "跨层注意力传播、最大流、路径替换、ACDC、EAP 和特征归因图共用工具入口。保存来源、证据类型和可画图数据。",
+      "methods": [
+        {
+          "id": "attention_rollout",
+          "status": "available_tool",
+          "depends_on": [
+            "model_forward",
+            "read_artifact"
+          ],
+          "requires": [
+            "contiguous_self_attention_from_embedding",
+            "teacher_forced_snapshot"
+          ],
+          "evidence_type": "descriptive_attention",
+          "validation": {
+            "checkpoint": "HuggingFaceTB/SmolLM2-135M-Instruct",
+            "example": "examples/mcp_attention_rollout.py"
+          }
+        },
+        {
+          "id": "attention_flow",
+          "status": "available_tool",
+          "depends_on": [
+            "model_forward",
+            "read_artifact"
+          ],
+          "requires": [
+            "contiguous_self_attention_from_embedding",
+            "teacher_forced_snapshot",
+            "networkx",
+            "query_position"
+          ],
+          "evidence_type": "descriptive_attention",
+          "validation": {
+            "checkpoint": "HuggingFaceTB/SmolLM2-135M-Instruct",
+            "example": "examples/mcp_attention_rollout.py"
+          }
+        },
+        {
+          "id": "path_patching",
+          "status": "available_tool",
+          "depends_on": [
+            "run_intervention"
+          ],
+          "requires": [
+            "edge_intervention",
+            "aligned_input_pairs"
+          ],
+          "evidence_type": "intervention_effect",
+          "validation": {
+            "checkpoint": "HuggingFaceTB/SmolLM2-135M-Instruct",
+            "example": "examples/mcp_circuits.py",
+            "scope": "isolated residual-component path"
+          }
+        },
+        {
+          "id": "acdc",
+          "status": "available_tool",
+          "depends_on": [
+            "run_intervention"
+          ],
+          "requires": [
+            "edge_intervention",
+            "aligned_input_pairs"
+          ],
+          "evidence_type": "intervention_effect",
+          "validation": {
+            "checkpoint": "HuggingFaceTB/SmolLM2-135M-Instruct",
+            "example": "examples/mcp_circuits.py",
+            "scope": "candidate residual edges with held-out retention, removal and random control"
+          }
+        },
+        {
+          "id": "eap",
+          "status": "available_tool",
+          "depends_on": [
+            "run_intervention"
+          ],
+          "requires": [
+            "edge_gradients",
+            "differentiable_metric",
+            "aligned_input_pairs"
+          ],
+          "evidence_type": "gradient_estimate",
+          "validation": {
+            "checkpoint": "HuggingFaceTB/SmolLM2-135M-Instruct",
+            "example": "examples/mcp_circuits.py",
+            "scope": "residual-component edge gradient checked against a small exact intervention"
+          }
+        },
+        {
+          "id": "feature_attribution_graph",
+          "status": "available_tool",
+          "depends_on": [
+            "extract_features"
+          ],
+          "requires": [
+            "gradient_permission",
+            "independent_circuit_tracer_runtime",
+            "compatible_per_layer_transcoders"
+          ],
+          "evidence_type": "replacement_model_attribution",
+          "validation": {
+            "checkpoint": "HuggingFaceTB/SmolLM2-135M-Instruct",
+            "example": "examples/mcp_feature_circuit.py",
+            "scope": "actual feature graph, edge matrix agreement and raw replacement fidelity"
+          }
+        }
+      ]
+    },
+    {
+      "id": "edit_facts",
+      "family": "editing",
+      "sequence": 3,
+      "status": "local_opt_in",
+      "existing_sources": [
+        "src/weight_programming/fact_tools.py",
+        "src/weight_programming/fact_worker.py"
+      ],
+      "references": [
+        "https://arxiv.org/abs/2202.05262",
+        "https://arxiv.org/abs/2210.07229",
+        "https://aclanthology.org/2024.acl-demos.9/",
+        "https://github.com/zjunlp/EasyEdit/tree/5c519afb14e39c7f70bc5536ebd777a62d8493bf"
+      ],
+      "next": "ROME 和 MEMIT 已在真实 SmolLM2 上验证补丁、直接提问、改写和邻近事实。",
+      "validation": {
+        "checkpoint": "HuggingFaceTB/SmolLM2-135M-Instruct",
+        "example": "examples/mcp_fact_editing.py",
+        "runtime": "CPU"
+      },
+      "methods": [
+        {
+          "id": "rome",
+          "status": "available_tool"
+        },
+        {
+          "id": "memit",
+          "status": "available_tool"
+        }
+      ]
+    }
+  ],
+  "stages": [
+    {
+      "id": 1,
+      "deliverable": "open_source_toolkit",
+      "success": "Coherent public API, paper-method mapping, documented adaptations, usable examples and release artifact"
+    },
+    {
+      "id": 2,
+      "target_model": "Qwen3-0.6B",
+      "deliverable": "reproducible_capability_effects",
+      "success": "Full public tasks, matched standard baselines, tool/observation/controller ablations and repeated seeds"
+    },
+    {
+      "id": 3,
+      "target_model": "4B role models",
+      "programmer_model": "separately identified stronger model",
+      "deliverable": "professional_multi_agent_workflow_effects",
+      "success": "Establish collaboration advantage then isolate parameter-programming benefit at fixed workflow and tools"
+    },
+    {
+      "id": "final",
+      "target_model": "Qwen3.5-0.8B original base revision",
+      "deliverable": "Reference replay, isolated independent discovery and edit-direction/mechanism comparison",
+      "success": "Matched full-task effects followed by support, signed direction, subspace, common-input functional and causal comparisons"
+    }
+  ],
+  "benchmark_priorities": [
+    {
+      "id": "OfficeBench",
+      "role": "first_environment_bridge",
+      "source": "https://github.com/zlwang-cs/OfficeBench"
+    },
+    {
+      "id": "Finch",
+      "role": "primary_complex_finance_candidate",
+      "source": "https://github.com/FinWorkBench/Finch"
+    },
+    {
+      "id": "LegalAgentBench",
+      "role": "Chinese_legal_transfer_candidate",
+      "source": "https://github.com/CSHaitao/LegalAgentBench"
+    },
+    {
+      "id": "Harvey_LAB",
+      "role": "hard_legal_deliverables_extension",
+      "source": "https://github.com/harveyai/harvey-labs"
+    },
+    {
+      "id": "TheAgentCompany",
+      "role": "optional_workplace_interaction_extension",
+      "source": "https://github.com/TheAgentCompany/TheAgentCompany"
+    },
+    {
+      "id": "GDPval",
+      "role": "optional_deliverable_quality_confirmation",
+      "source": "https://openai.com/index/gdpval/"
+    },
+    {
+      "id": "APEX_Agents",
+      "role": "optional_professional_long_horizon_extension",
+      "source": "https://www.mercor.com/blog/introducing-apex-agents/"
+    }
+  ],
+  "research_candidates": [
+    {
+      "method": "EWC-inspired retention",
+      "paper": "https://arxiv.org/abs/1612.00796",
+      "reason": "Candidate local retention proxy; gradient track and held-out behavioral confirmation required",
+      "status": "literature_candidate_not_implemented"
+    },
+    {
+      "method": "ReFT",
+      "paper": "https://arxiv.org/abs/2404.03592",
+      "reason": "Learned representation intervention comparison, distinct from base-weight edits and temporary patching",
+      "status": "literature_candidate_not_implemented"
+    },
+    {
+      "method": "Sub-goal Distillation",
+      "paper": "https://proceedings.mlr.press/v274/hashemzadeh25a.html",
+      "reason": "Planning/execution specialization reference and standard role-transfer baseline",
+      "status": "literature_candidate_not_implemented"
+    },
+    {
+      "method": "AgentArk",
+      "paper": "https://arxiv.org/abs/2602.03955",
+      "reason": "Related work and multi-agent-to-single-model distillation comparison; not claimed implemented",
+      "status": "literature_candidate_not_implemented"
+    }
+  ],
+  "original_contract": "research/references/mit-wsp/exp8_prompt.txt",
+  "mandatory_original_capabilities": [
+    "persistent_CPU_weight_kernel",
+    "load_and_load_original",
+    "save_edit_drop_edit_edited",
+    "budgeted_original_edited_paired_generation",
+    "teacher_forced_token_logprobs_topk",
+    "residual_and_MLP_observation",
+    "full_attention_observation_where_defined",
+    "direct_directional_parameter_edits"
+  ],
+  "professional_workflow_protocol": "research/protocols/professional-workflow-protocol.md",
+  "permission_document": "docs/tool-permissions.md",
+  "expansion_rationale": "research/methods/literature-expansion.md",
+  "public_release": "0.4.0a4.dev0",
+  "working_version": "0.4.0a5.dev0",
+  "method_status_definitions": {
+    "existing_algorithm": "已有核心算法，按工具的建设顺序接入。",
+    "service_pending": "已有工具服务代码，统一登记、权限或真实调用尚待验证。",
+    "delegates_existing": "调用已实现能力或同一算法入口。",
+    "planned": "需要实现或接入。",
+    "available_tool": "已接入公共工具并用真实模型或产物简单验证。"
+  },
+  "implementation_audit": "docs/tool-inventory.md",
+  "public_source_ref": "main"
+}

@@ -17,7 +17,7 @@
 | 更新组合、低秩近似 | 调整已有方向或减少表示成本 | 相同基座／坐标、更新来源与局部近似目标 | 有训练来源的方向必须追溯；几何最优不保证任务最优 |
 | DPO等偏好优化 | 改善有可靠偏好定义的行为 | 可信偏好对、参考分布及目标 | 数据与训练条件满足后才接入，不能把任意概率提升称为DPO |
 
-来源见[方法依据](../method-foundations.md)、[SparseGPT实做](../research/reconstruction-study.md)、[配对激活方法](https://arxiv.org/abs/2309.16042v2)及[MIT原始协议](../research/references/mit-wsp/exp8_prompt.txt)。方法出处支持算法动机，效果仍需在当前模型和任务上建立。
+来源见[方法依据](../research/methods/method-foundations.md)、[SparseGPT实做](../research/reports/reconstruction-study.md)、[配对激活方法](https://arxiv.org/abs/2309.16042v2)及[MIT原始协议](../research/references/mit-wsp/exp8_prompt.txt)。方法出处支持算法动机，效果仍需在当前模型和任务上建立。
 
 ## 为什么配对激活工具必须单列
 

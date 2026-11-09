@@ -1,0 +1,214 @@
+{
+  "version": "draft-0.1",
+  "status": "historical_protocol_snapshot",
+  "core_models": [
+    {
+      "id": "Qwen/Qwen3-0.6B",
+      "family": "qwen3",
+      "local": "/home/hdd_1/tangziye/Model/Qwen3-0.6B"
+    },
+    {
+      "id": "Qwen/Qwen3-1.7B",
+      "family": "qwen3",
+      "local": "/home/hdd_1/tangziye/Model/Qwen3-1.7B"
+    },
+    {
+      "id": "HuggingFaceTB/SmolLM2-360M-Instruct",
+      "family": "smollm2",
+      "local": "/home/hdd_1/tangziye/Model/SmolLM2-360M-Instruct"
+    },
+    {
+      "id": "HuggingFaceTB/SmolLM2-1.7B-Instruct",
+      "family": "smollm2",
+      "local": "/home/hdd_1/tangziye/Model/SmolLM2-1.7B-Instruct"
+    }
+  ],
+  "auxiliary_models": [
+    {
+      "id": "Qwen/Qwen3-4B-Instruct-2507",
+      "family": "qwen3",
+      "role": "larger-model and posttraining-stage comparison; not a pure size control"
+    }
+  ],
+  "optimization_seeds": [
+    11,
+    22,
+    33
+  ],
+  "data_split_seed": 20261106,
+  "main_benchmarks": [
+    {
+      "task": "GSM8K",
+      "official_partition": "test",
+      "expected_n": 1319,
+      "harness": "lm_eval==0.4.9.2",
+      "template": "gsm8k_cot_zeroshot",
+      "max_new_tokens": 512,
+      "primary": "exact_match,flexible-extract",
+      "secondary": "exact_match,strict-match"
+    },
+    {
+      "task": "ARC-Challenge",
+      "official_partition": "test",
+      "expected_n": 1172,
+      "primary": "acc_norm",
+      "secondary": "acc"
+    },
+    {
+      "task": "HellaSwag",
+      "official_partition": "validation",
+      "expected_n": 10042,
+      "primary": "acc_norm",
+      "secondary": "acc"
+    }
+  ],
+  "model_io": {
+    "chat_template": true,
+    "enable_thinking": false,
+    "generation": "greedy",
+    "max_context": 2048,
+    "dtype": "bfloat16"
+  },
+  "training_reference_proposal": {
+    "objective": "solution-rationale plus final answer plus EOS",
+    "train_examples": 6400,
+    "calibration_examples": 256,
+    "development_examples": 817,
+    "steps": 100,
+    "effective_batch": 16,
+    "rank": 8,
+    "alpha": 16,
+    "targets": [
+      "q_proj",
+      "v_proj"
+    ],
+    "learning_rate": 0.0002,
+    "warmup_steps": 10,
+    "clip_norm": 1,
+    "max_length": 1536,
+    "checkpoint_interval": 10,
+    "note": "Freeze after implementation and tokenizer-length validation; this JSON is a proposal, not evidence of completed training."
+  },
+  "controls_required": [
+    "base",
+    "standard_method_defaults",
+    "same_tools_fixed_policy",
+    "same_tools_random_search",
+    "same_tools_greedy_or_bayesian_search",
+    "same_tools_llm_controller",
+    "without_contracts",
+    "without_internal_observations",
+    "without_protection_constraints"
+  ],
+  "controller_proposal": {
+    "primary_local_model": "Qwen3-4B-Instruct-2507",
+    "secondary_family_ablation": "SmolLM2-1.7B-Instruct",
+    "no_external_paid_api_required": true,
+    "record": [
+      "exact_input_observations",
+      "tool_specification",
+      "action",
+      "prediction",
+      "actual_outcome",
+      "gpu_time",
+      "controller_tokens",
+      "rollback"
+    ]
+  },
+  "application": {
+    "dataset": "FinQA",
+    "official_train_n": 6251,
+    "official_dev_n": 883,
+    "official_test_n": 1147,
+    "roles": [
+      "retriever",
+      "planner",
+      "verifier"
+    ],
+    "runtime": "single immutable base plus per-role low-rank delta",
+    "kv_policy": "fresh cache/prefill at role boundary",
+    "mandatory_controls": [
+      "single_call_base",
+      "prompt_only_workflow",
+      "one_multitask_adapter",
+      "role_adapters_shared_base",
+      "same_role_adapters_full_replicas",
+      "random_role_assignment",
+      "oracle_intermediates_diagnostic_only"
+    ],
+    "representation_control": {
+      "version": "finqa-roles-v4-header",
+      "runner": "src/run_finqa_header_control.py",
+      "status": "submitted_after_development_diagnosis__not_completed",
+      "scope": "public table headers preserved; old frozen V3 retained; same targets and training budget"
+    }
+  },
+  "completion": "Full benchmark scores, three-seed optimization, cross-family analysis, real independently trained role deltas, workflow ablations, deployment measurements, and paper draft are all required before marking the paper-level goal complete.",
+  "formal_search_v2": {
+    "status": "formal_matrix_active__not_completed",
+    "runner": "src/run_search_matrix.py",
+    "source_policy": "immutable code and contract snapshot",
+    "policies": [
+      "fixed",
+      "random",
+      "greedy",
+      "bo",
+      "llm"
+    ],
+    "queries": 21,
+    "fixed_control": "Task Arithmetic full global coefficients 0..1 step .05",
+    "adaptive_space": "four depth bands, each 0..1 step .05",
+    "domain_development_n": 64,
+    "guard_arc_validation_n": 32,
+    "guard_proxy": "character-length-normalized choice CE, paired bootstrap upper95 increase <= .02",
+    "controller": "Qwen3-4B-Instruct-2507",
+    "cost_scope": "equal-query study; total-cost matching remains required"
+  },
+  "relative_capacity_C2": {
+    "status": "training_and_standard_lora_confirmation_in_progress__not_completed",
+    "target_trainable_fraction": 0.002,
+    "rank_by_model": {
+      "Qwen3-0.6B": 8,
+      "Qwen3-1.7B": 17,
+      "SmolLM2-360M-Instruct": 7,
+      "SmolLM2-1.7B-Instruct": 17
+    },
+    "alpha_rule": "2*rank",
+    "evidence": "artifacts/public/provenance/capacity-controls.json"
+  },
+  "cross_model_statistics": {
+    "protocol": "research/protocols/model-trend-protocol.md",
+    "implementation": "src/analyze_model_trends.py",
+    "minimum_seeds_per_model": 3,
+    "bootstrap": "2000 empirical seed/item draws, independent seeds across models and shared item samples",
+    "status": "implementation_and_partial_results_verified__no_three_seed_model_contrasts_yet"
+  },
+  "resident_budget_study": {
+    "status": "frozen_and_submitted__not_completed",
+    "protocol": "research/protocols/cost-budget-protocol.md",
+    "runner": "src/run_budget_matrix.py",
+    "scope": "common incumbent deadline including loading; soft overrun reported, not strict equal actual consumed time",
+    "models": "same four core models",
+    "seeds": [
+      11,
+      22,
+      33
+    ],
+    "policies": [
+      "fixed",
+      "random",
+      "greedy",
+      "bo",
+      "llm"
+    ],
+    "heldout_confirmation": {
+      "status": "submitted_waiting_for_both_full_matrices__not_completed",
+      "runner": "src/run_budget_confirmation.py",
+      "job": "job-mw4uu67h-ffb3",
+      "state_identity": "source-bound native-base or exact functional delta/coefficients, no approximate reuse",
+      "runtime": "same frozen confirmation-v2 evaluator and task settings"
+    }
+  },
+  "recorded_date": "2026-11-06",
+  "current_project_status": "PROJECT_STATUS.md"
+}

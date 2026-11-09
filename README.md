@@ -6,6 +6,8 @@ WSP stands for **Weight-Space Programming**. The toolkit wraps PyTorch, Hugging 
 
 [中文说明](README.zh-CN.md) · [Getting started](docs/getting-started.md) · [MCP and Python tools](docs/mcp-tools.md) · [Benchmarks](docs/benchmarks.md) · [Releases](https://github.com/ZeroTang05/WSP-toolkit/releases)
 
+[Project status](PROJECT_STATUS.md) · [Tool inventory](docs/tool-inventory.md) · [Repository guide](docs/maintaining.md)
+
 ## What you can do
 
 | Goal | Tool |
@@ -21,7 +23,7 @@ WSP stands for **Weight-Space Programming**. The toolkit wraps PyTorch, Hugging 
 
 The local Model Context Protocol (MCP) server and Python registry use the same tool definitions. Model adapters report which internal locations are available for each checkpoint. [Tool reference and examples](docs/mcp-tools.md)
 
-The design catalog covers 34 tool entries and 47 named methods. Capabilities are verified separately for Llama, Qwen3, Qwen3.5, and DistilBERT. [Design and method sources](research/wsp-toolkit-tool-design.md) · [Implementation and handoff](research/toolkit-implementation-audit.md)
+The design catalog covers 34 tool entries and 47 named methods. Capabilities are verified separately for Llama, Qwen3, Qwen3.5, and DistilBERT. [Design and method sources](docs/tool-design.md) · [Tool inventory](docs/tool-inventory.md)
 
 On Linux, an isolated Python session can retain variables across tool calls, read model snapshots, and propose a weight patch. [Persistent Python sessions](docs/mcp-tools.md#persistent-python-sessions)
 

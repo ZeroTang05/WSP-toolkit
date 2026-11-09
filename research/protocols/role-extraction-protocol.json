@@ -1,0 +1,86 @@
+{
+  "version": "role-extraction-direction-v1",
+  "status": "historical_protocol_snapshot",
+  "objective": "Establish multi-agent collaboration benefit, then construct role-specialized small models through paper-derived parameter programs.",
+  "stages": [
+    {
+      "id": "collaboration",
+      "requires": [],
+      "outputs": [
+        "frozen_graph_and_role_interfaces",
+        "full_public_partition_scores",
+        "matched_budget_quality_curves",
+        "paired_collaboration_gain"
+      ],
+      "baselines": [
+        "strong_single_agent",
+        "single_agent_refine",
+        "independent_sampling_aggregation",
+        "role_prompts_without_messages"
+      ],
+      "pass_rule": "Positive prespecified collaboration gain with paired interval lower bound above zero, compared to strong baseline chosen on training-derived development only; report practical effect and costs."
+    },
+    {
+      "id": "role_programming",
+      "requires": [
+        "collaboration"
+      ],
+      "baselines": [
+        "unmodified_small_roles",
+        "shared_multitask_adapter",
+        "ordinary_role_LoRA",
+        "nonLLM_search_same_tools_and_data"
+      ],
+      "operations": [
+        "role_supervised_LoRA",
+        "trained_delta_scale_and_composition",
+        "Frobenius_delta_rank_compression",
+        "fixed_activation_delta_rank_compression",
+        "BI_depth_selection",
+        "structured_MLP_pruning"
+      ],
+      "isolation": "Separate teacher-generated data from LLM parameter-program decisions."
+    },
+    {
+      "id": "replacement_and_deployment",
+      "requires": [
+        "role_programming"
+      ],
+      "outputs": [
+        "single_role_replacements",
+        "all_subsets_for_three_roles",
+        "workflow_quality_cost_frontier",
+        "offline_cost_amortization"
+      ],
+      "acceptance": "Predeclare quality tolerance before new confirmation; report quality improvement and noninferior compression separately."
+    }
+  ],
+  "candidate_tasks": [
+    "HotpotQA_distractor_offline_reading_initial_candidate",
+    "FinQA_existing_diagnostic",
+    "code_generation_secondary_candidate"
+  ],
+  "data_rule": "Train-derived construction/calibration/development; frozen complete public evaluation. HotpotQA public dev must be named dev, not test.",
+  "teacher_candidate": "Existing Qwen3-4B-Instruct-2507; strength and collaboration benefit unverified",
+  "student_candidates": [
+    "Qwen3-0.6B",
+    "Qwen3-1.7B",
+    "SmolLM2-360M-Instruct",
+    "SmolLM2-1.7B-Instruct"
+  ],
+  "new_role_training_ready": false,
+  "note": "Pinned HotpotQA data preparation and frozen development/conditional official-dev pipeline submitted. No new role training or collaboration success claimed.",
+  "source_document": "research/protocols/multiagent-role-programming.md",
+  "benchmark_protocol": "research/protocols/collaboration-benchmark.md",
+  "execution_jobs": {
+    "preparation": "job-mw542h8m-9518",
+    "collaboration": "job-mw54pcsb-e5d4",
+    "preparation_process": 989786
+  },
+  "demonstrations": "Same first two disjoint training-calibration examples in every condition/call; labels permitted only for these training examples before target inference.",
+  "latest_research_roadmap": "research/roadmap.md",
+  "latest_stage3_target": "4B role models; programmer model recorded separately",
+  "historical_scope_note": "Earlier HotpotQA teacher/student protocol retained as a generic control design. New main application is professional workflows. This metadata makes no assertion about remote process state.",
+  "recorded_date": "2026-11-06",
+  "current_project_status": "PROJECT_STATUS.md"
+}

@@ -6,6 +6,8 @@ WSP 是 Weight-Space Programming（权重空间编程）的缩写。工具包把
 
 [English（英文首页）](README.md) · [上手指南](docs/getting-started.md) · [工具与示例](docs/mcp-tools.md) · [完整实验结果](docs/benchmarks.md) · [下载发布包](https://github.com/ZeroTang05/WSP-toolkit/releases)
 
+[当前项目状态](PROJECT_STATUS.md) · [已实现工具清单](docs/tool-inventory.md) · [项目目录说明](docs/maintaining.md)
+
 | 想做什么 | 可以用什么 |
 |---|---|
 | 查看权重并保存可撤销的修改 | 读取张量切片，创建、重放、撤销或导出补丁 |
@@ -19,7 +21,7 @@ WSP 是 Weight-Space Programming（权重空间编程）的缩写。工具包把
 
 研究者可以用 Python 调用，大模型可以通过 MCP（模型连接工具的协议）调用。两种入口共用工具定义，由模型适配器说明当前模型可以观察哪些位置。 [工具与示例](docs/mcp-tools.md)
 
-当前设计目录覆盖 **34 个工具条目、47 种具名方法**。Llama、Qwen3、Qwen3.5 和 DistilBERT 按实际能力分别接入。每种方法保留文献来源、实现位置和真实示例。 [详细设计](research/wsp-toolkit-tool-design.md) · [实现清单与交接](research/toolkit-implementation-audit.md)
+当前设计目录覆盖 **34 个工具条目、47 种具名方法**。Llama、Qwen3、Qwen3.5 和 DistilBERT 按实际能力分别接入。每种方法保留文献来源、实现位置和真实示例。 [详细设计](docs/tool-design.md) · [工具实现清单](docs/tool-inventory.md)
 
 在 Linux 上，隔离的 Python 会话可以跨调用保留变量、读取模型快照，并提交权重补丁。 [隔离 Python 会话](docs/mcp-tools.md#persistent-python-sessions)
 
