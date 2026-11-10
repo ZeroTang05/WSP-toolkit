@@ -1,76 +1,76 @@
-# 工具库安装与可用范围
+# Installation and supported capabilities
 
-本页对应 `0.4.0a5.dev0` 源码，包含设计清单的通用工具、可解释性分析、训练与压缩方法。预发布安装包为 `0.4.0a4.dev0`。项目原创代码采用 Apache-2.0。 [当前源码](https://github.com/ZeroTang05/WSP-toolkit/tree/main) · [预发布安装包](https://github.com/ZeroTang05/WSP-toolkit/releases/tag/v0.4.0a4.dev0) · [第三方归属](../THIRD_PARTY.md)
+This page describes source version `0.4.0a5.dev0`, including the general tools, interpretability analysis, training, and compression methods in the design catalog. The prerelease package is `0.4.0a4.dev0`. Original project code is licensed under Apache-2.0. [Current source](https://github.com/ZeroTang05/WSP-toolkit/tree/main) · [Prerelease package](https://github.com/ZeroTang05/WSP-toolkit/releases/tag/v0.4.0a4.dev0) · [Third-party attribution](../THIRD_PARTY.md)
 
-## 按运行时安装
+## Install by runtime
 
-核心张量读写、方向操作、二阶重建不要求安装Transformers。前向后端采用互斥的精确版本extra，分别放入独立虚拟环境。
+Core tensor I/O, direction operations, and second-order reconstruction do not require Transformers. Forward backends use mutually exclusive extras with exact versions in separate virtual environments.
 
 ```sh
-python -m pip install .                  # 核心张量与重建API
-python -m pip install '.[qwen3,math]'     # Qwen3／Llama，Transformers4.57.6
-python -m pip install '.[qwen35,math]'    # Qwen3.5，Transformers5.3.0，Torch>=2.4
+python -m pip install .                  # Core tensor and reconstruction API
+python -m pip install '.[qwen3,math]'     # Qwen3/Llama, Transformers 4.57.6
+python -m pip install '.[qwen35,math]'    # Qwen3.5, Transformers 5.3.0, Torch>=2.4
 ```
 
-后两条是两个环境的选项，不能在同一环境同时安装qwen3与qwen35。服务器原作环境使用Torch2.5.1+cu121；GPU构建版本按实际驱动选择，不能让默认依赖安装替换共享实验环境。旧研究CLI与固定lm-eval轨道使用qwen3／benchmark extra。
+The last two commands are options for separate environments: do not install qwen3 and qwen35 together. The original server environment uses Torch 2.5.1+cu121; choose the GPU build for the installed driver and prevent default dependency installation from replacing a shared experiment environment. The legacy research CLI and pinned lm-eval track use the qwen3/benchmark extra.
 
-## 本地 MCP 与 Python 只读工具
+## Local MCP and Python read-only tools
 
-从当前源码安装本地 MCP 服务，传入一个已经下载的检查点和独立工作目录。
+Install the local MCP server from current source and supply a downloaded checkpoint and a separate workspace.
 
 ```sh
 python -m pip install '.[qwen3,mcp]'
 wsp-mcp --model /path/to/checkpoint --workspace /path/to/workspace
 ```
 
-MCP 客户端将 `wsp-mcp` 配置为本地进程。`tools/list` 会发现 `describe_model`、`model_forward`、`read_artifact`、`list_tensors`、`read_tensor` 和 `get_run`。研究脚本使用 `open_inspection(model_dir, workspace).registry` 调用同一工具。模型加载时由宿主登记检查点。Hub 仓库用 `--revision` 指定完整提交号。
+Configure `wsp-mcp` as a local process in the MCP client. `tools/list` discovers `describe_model`, `model_forward`, `read_artifact`, `list_tensors`, `read_tensor`, and `get_run`. Research scripts call the same tools with `open_inspection(model_dir, workspace).registry`. The host registers the checkpoint at model load. Use a full commit hash with `--revision` for a Hub repository.
 
-下列示例在真实模型上用两种入口分别运行一次，比较生成、激活和权重切片。
+The following example runs both entry points on a real model and compares generation, activations, and weight slices.
 
 ```sh
 python examples/mcp_inspection.py --model /path/to/checkpoint
 ```
 
-`describe_model` 先返回基座版本和可观测站点。`model_forward` 将实际采集的数值保存到工作目录，返回产物 ID。`read_artifact` 根据 ID 和切片坐标读取少量数值。这样大矩阵只存一份，调用方可以选自己需要的部分。MCP 启动与 Python 示例使用各自的运行目录和预算。
+`describe_model` returns the base version and observable sites. `model_forward` saves collected values to the workspace and returns artifact IDs. `read_artifact` reads small slices by ID and coordinates, so large matrices are stored once and callers select the parts they need. The MCP and Python examples use separate run directories and budgets.
 
-已在真实 SmolLM2-135M-Instruct（Llama 架构）上运行该示例。两种入口发现的工具一致，读取同一份配置下的 `1 × 5 × 576` 激活、BF16 权重和生成回放，切片数值一致。
+The example ran on real SmolLM2-135M-Instruct (Llama architecture). Both entry points discovered the same tools and agreed on slices of `1 × 5 × 576` activations, BF16 weights, and generation replay under the same configuration.
 
-## 持久 Python 会话
+## Persistent Python sessions
 
-`--allow-python` 在 Linux 上开放 `execute_python`，要求 Bubblewrap 和虚拟环境。Python 入口用 `open_inspection(..., allow_python=True)`。同一个 `session_id` 会保留变量并固定到一个 `variant_id`。查看另一个候选时使用新的会话 ID。
+On Linux, `--allow-python` enables `execute_python` and requires Bubblewrap and a virtual environment. In Python use `open_inspection(..., allow_python=True)`. A `session_id` retains variables and binds to one `variant_id`; use a new session ID for another candidate.
 
-- `load(name, region)` 从该版本读取权重切片。省略 `region` 时读取整个张量。
-- `input_artifacts` 把已登记的数组 ID 绑定到本次调用的名字。代码用 `read_array(name)` 读取。
-- `outputs` 把输出名字和轴标签告诉宿主。代码用 `save_array(name, value)` 提交数组。
-- `edits` 可以引用输出名字生成补丁，需同时开启 `--allow-edits`。应用补丁仍使用 `apply_patch`。
+- `load(name, region)` reads a weight slice from that version; omit `region` for the whole tensor.
+- `input_artifacts` binds registered array IDs to names for the call; code reads them with `read_array(name)`.
+- `outputs` declares output names and axis labels to the host; code submits arrays with `save_array(name, value)`.
+- `edits` can refer to output names to create patches, with `--allow-edits` also enabled. Apply patches with `apply_patch`.
 
-`get_run` 可以查结果和用量。工作区的 `python/runs` 保存每个单元的代码和运行记录。关闭工具实例时回收隔离进程。真实 Qwen3-0.6B 示例核对了权重读数、变量保留、前向快照与补丁应用后的候选读数。 [运行示例](../examples/mcp_python.py) · [Bubblewrap](https://github.com/containers/bubblewrap)
+`get_run` retrieves results and usage. The workspace's `python/runs` stores each cell's code and run record. Closing the tool instance releases the isolated process. A real Qwen3-0.6B example checked weight reads, retained variables, forward snapshots, and candidate reads after applying a patch. [Runnable example](../examples/mcp_python.py) · [Bubblewrap](https://github.com/containers/bubblewrap)
 
-## 权重补丁、激活干预与图表
+## Weight patches, activation interventions, and plots
 
-启动 MCP 服务时用 `--allow-edits` 开放补丁、投影、合并和剪枝。Python 调用 `open_inspection` 时传 `allow_edits=True`。`create_patch` 保存原精度替换张量与清单，`apply_patch` 返回可供前向和权重读取使用的候选 ID。`revert_patch` 返回父版本 ID，下一次运行传这个 ID 即可。小切片可以内联 `values`，已有数组可以传 `value_artifact_id`。
+Start the MCP service with `--allow-edits` to enable patches, projection, merging, and pruning; in Python pass `allow_edits=True` to `open_inspection`. `create_patch` saves replacement tensors at original precision and a manifest; `apply_patch` returns a candidate ID for forward passes and weight reads. `revert_patch` returns the parent ID for the next run. Small slices may use inline `values`; existing arrays may use `value_artifact_id`.
 
-`export_patch` 返回相对于工作目录的补丁包路径。将包复制到新工作目录的 `imports/<patch_id>`，用 `import_patch` 校验，再按同一父版本应用。`export_model` 产出完整 Transformers 检查点，保留原配置和分词器，只重写改动的 Safetensors 分片。这个例子从创建一路执行到重载，也调用了方向投影、任务向量平均、TIES、DARE、Wanda 和两种 SparseGPT 路径。DARE 先用 `drop_probability` 随机丢弃部分增量，按保留概率重缩放后再合并。固定种子可重放掩码。 [DARE](https://arxiv.org/abs/2311.03099)
+`export_patch` returns a patch package path relative to the workspace. Copy the package to `imports/<patch_id>` in a new workspace, validate it with `import_patch`, and apply it to the same parent. `export_model` produces a complete Transformers checkpoint, retaining the original configuration and tokenizer and rewriting only changed Safetensors shards. The example covers creation through reload, plus direction projection, task-vector averaging, TIES, DARE, Wanda, and two SparseGPT paths. DARE randomly drops part of the delta with `drop_probability`, rescales by the retention probability, and merges; a fixed seed replays the mask. [DARE](https://arxiv.org/abs/2311.03099)
 
 ```sh
 python examples/mcp_patch.py --model /path/to/checkpoint
 ```
 
-`--allow-interventions` 单独授权激活替换、置零消融、方向注入和站点扫描。方向注入使用 `method="direction"`，传 `direction` 或 `direction_artifact_id` 及 `strength`。方向在所选通道归一化后按强度加到激活上。安装 `analysis` 可选依赖后，`render_evidence` 读取已登记数组并输出 PNG 或 PDF。 [对比激活加法](https://arxiv.org/abs/2312.06681)
+`--allow-interventions` separately authorizes activation replacement, zero ablation, direction injection, and site scans. For direction injection use `method="direction"`, `direction` or `direction_artifact_id`, and `strength`. The selected-channel direction is normalized and added to the activation at the specified strength. With the optional `analysis` dependencies installed, `render_evidence` reads registered arrays and outputs PNG or PDF. [Contrastive Activation Addition](https://arxiv.org/abs/2312.06681)
 
 ```sh
 python -m pip install '.[qwen3,mcp,analysis]'
 python examples/mcp_intervention.py --render --model /path/to/checkpoint
 ```
 
-两个示例都在真实 SmolLM2 上运行。补丁用一个 BF16 权重验证，撤销恢复了基座读数，重放和完整检查点重载复现了候选。干预示例验证了两个站点共用基线，并生成了激活、注意力和干预效果热力图。
+Both examples ran on real SmolLM2. A BF16 weight validated patching: reversion restored the base reading, and replay and complete checkpoint reload reproduced the candidate. The intervention example checked a shared baseline for two sites and produced activation, attention, and intervention-effect heatmaps.
 
-## 差分、开发集评测与表示分析
+## Deltas, development-set evaluation, and representation analysis
 
-- `analyze_weight_delta` 比较同基座候选、WSP LoRA 因子或由宿主导入的原生 PEFT LoRA。返回逐张量及逐层变化、主方向和原精度舍入误差。`compress_update` 用普通或输入加权的低秩截断保存更小的更新，按需生成可应用的密集补丁。压缩的是更新，密集检查点仍保留原形状。
-- `evaluate_variants` 由宿主使用 `--development-jsonl` 和 `--dataset-id` 登记开发集。当前从模型回答中提取带框答案，再与标准答案做文本匹配。每个版本共用题目和采样种子，报告可分页的逐样本结果及按题重抽样的区间。`score_preferences` 从真实前向计算两段回答的对数概率差，再减去参考版本的分差。
-- `compare_models` 支持同基座权重差分、内部表示相似度和开发集行为比较。宿主可用 `--comparison-model` 加载第二个本地检查点。表示比较使用相同原始文本及各自最后一个有效词元。第二个工作区的结果用 `workspace="comparison"` 读取。
-- `scan_lens` 用模型自己的最终归一化和词表头读取各层。安装 `analysis` 后，`probe_representation` 在显式分开的样本上比较真实标签、控制标签和输入嵌入基线。安装 `gradients` 并加 `--allow-gradients` 后，`attribute_output` 用积分梯度计算词元贡献，返回贡献总和与目标分数变化的差。
+- `analyze_weight_delta` compares same-base candidates, WSP LoRA factors, or native PEFT LoRA imported by the host. It returns per-tensor and per-layer changes, principal directions, and original-precision rounding errors. `compress_update` saves smaller updates using ordinary or input-weighted low-rank truncation and optionally generates an applicable dense patch. The update is compressed; dense checkpoints retain their original shapes.
+- The host registers development data for `evaluate_variants` using `--development-jsonl` and `--dataset-id`. It currently extracts boxed answers from model responses and text-matches them against reference answers. Versions share questions and sampling seeds; the tool reports paginated per-sample results and question-bootstrap intervals. `score_preferences` calculates the log-probability margin between two answers from real forward passes, then subtracts the reference version's margin.
+- `compare_models` supports same-base weight deltas, internal representation similarity, and development-set behavior. The host can load a second local checkpoint with `--comparison-model`. Representation comparisons use the same raw text and each model's last valid token. Read the second workspace's results with `workspace="comparison"`.
+- `scan_lens` reads each layer using the model's own final normalization and vocabulary head. With `analysis` installed, `probe_representation` compares true labels, control labels, and an input-embedding baseline on explicitly separated samples. With `gradients` installed and `--allow-gradients`, `attribute_output` computes token contributions using integrated gradients and returns the difference between their sum and the target score change.
 
 ```sh
 python -m pip install '.[qwen3,mcp,analysis,gradients]'
@@ -79,86 +79,86 @@ python examples/mcp_evaluation.py --cross-checkpoint --model /path/to/checkpoint
 python examples/mcp_representation.py --attribution --model /path/to/checkpoint --dataset benchmarks/wsp-practice-original-v1/gsm8k_train.jsonl
 ```
 
-这些示例在真实 SmolLM2 和 GSM8K 训练来源样本上简单调用工具。最后一层读出的前三个词元与前向结果一致。两个分别加载的检查点复现了同一基座候选比较的相似度。层级读出支持直接读出与已登记的调优透镜，两者共用模型最终输出头。
+These examples make basic calls using real SmolLM2 and GSM8K training-derived samples. The top three tokens from the final-layer readout matched the forward result. Two separately loaded checkpoints reproduced the similarity of a same-base candidate comparison. Layer readout supports direct readout and registered tuned lenses, both using the model's final output head.
 
-## 跨层注意力传播与最大流
+## Cross-layer attention rollout and maximum flow
 
-先用 `describe_model` 查询 `trace_circuit_methods`。在支持的模型上，`model_forward` 采集从第 0 层到目标层的普通自注意力矩阵。调用 `trace_circuit` 时传 `run_id` 和方法。`attention_rollout` 返回所有词元的跨层传播分数，上限 256 个词元。`attention_flow` 需要 `analysis` 依赖中的 NetworkX，额外传 `query_position`，计算指定位置到各输入词元的最大流，上限 32 个词元。两个结果都能用 `read_artifact` 读取、用 `attention_heatmap` 绘图，并标记为注意力权重的描述性证据。 [方法论文](https://aclanthology.org/2020.acl-main.385/)
+First query `trace_circuit_methods` with `describe_model`. On supported models, `model_forward` collects standard self-attention matrices from layer 0 through the target layer. Pass `run_id` and the method to `trace_circuit`. `attention_rollout` returns cross-layer propagation scores for all tokens, up to 256 tokens. `attention_flow` requires NetworkX from the `analysis` dependencies and a `query_position`; it computes maximum flow from that position to each input token, up to 32 tokens. Both results can be read with `read_artifact`, plotted using `attention_heatmap`, and are labeled descriptive evidence about attention weights. [Method paper](https://aclanthology.org/2020.acl-main.385/)
 
 ```sh
 python -m pip install '.[qwen3,mcp,analysis]'
 python examples/mcp_attention_rollout.py --model /path/to/checkpoint
 ```
 
-示例在真实 SmolLM2-135M-Instruct 上读取 30 层注意力，核对首层与原始矩阵的计算关系，并生成 `5 × 5` 传播热力图和 `1 × 5` 最大流热力图。 [已有实现与合并路线](tool-design.md#9-已有实现与合并路线) · [机器可读工具目录](tool-catalog.json)
+The example reads 30 layers of attention on real SmolLM2-135M-Instruct, checks the first layer's mathematical relationship with the original matrix, and generates `5 × 5` rollout and `1 × 5` maximum-flow heatmaps. [Existing implementations and integration roadmap](tool-design.md#9-existing-implementations-and-integration-roadmap) · [Machine-readable catalog](tool-catalog.json)
 
-## 结构压缩与适配器训练
+## Structural compression and adapter training
 
-- `compress_model` 用 `--allow-edits` 开放。`block_influence` 从校准文本计算各层前后内部状态的变化，删除得分最低的指定数量层。`taylor_mlp` 还需要 `--allow-gradients` 和 `--training-jsonl`，按权重与梯度给前馈通道排序，再同时缩短相关矩阵的维度。它沿用仓库的分组方法，保留宽度按 128 对齐。工具返回完整检查点、参数量和清单路径。 [ShortGPT](https://arxiv.org/abs/2403.03853) · [LLM-Pruner](https://arxiv.org/abs/2305.11627)
-- `train_update` 需要 `peft` 依赖、`--allow-training` 和 `--training-jsonl`。样本用 `id` 引用，`problem` 是提示。LoRA 和剪后恢复读取 `answer`，DPO 读取 `chosen` 与 `rejected`，序列蒸馏读取 `teacher_answer` 与 `teacher_model`。剪后恢复从 `compress_model` 的导出检查点打开工作区。标准 PEFT 文件与 WSP 更新因子同时保存，`materialize=true` 需要编辑授权。若在候选版本上训练，重载 PEFT 文件时需显式提供对应父模型。 [LoRA](https://arxiv.org/abs/2106.09685) · [DPO](https://arxiv.org/abs/2305.18290) · [序列蒸馏](https://aclanthology.org/D16-1139/)
+- `compress_model` is enabled by `--allow-edits`. `block_influence` calculates changes in internal states across layers from calibration text and deletes a specified number of lowest-scoring layers. `taylor_mlp` also requires `--allow-gradients` and `--training-jsonl`; it ranks feed-forward channels by weights and gradients and shortens related matrix dimensions together. It follows the repository's grouping method, keeping width aligned to 128. It returns a complete checkpoint, parameter count, and manifest path. [ShortGPT](https://arxiv.org/abs/2403.03853) · [LLM-Pruner](https://arxiv.org/abs/2305.11627)
+- `train_update` requires the `peft` dependency, `--allow-training`, and `--training-jsonl`. Samples are referenced by `id`, and `problem` is the prompt. LoRA and post-pruning recovery read `answer`; DPO reads `chosen` and `rejected`; sequence distillation reads `teacher_answer` and `teacher_model`. Post-pruning recovery opens a workspace from the checkpoint exported by `compress_model`. Standard PEFT files and WSP update factors are saved together; `materialize=true` requires edit permission. When training on a candidate, explicitly supply its parent model when reloading PEFT files. [LoRA](https://arxiv.org/abs/2106.09685) · [DPO](https://arxiv.org/abs/2305.18290) · [Sequence distillation](https://aclanthology.org/D16-1139/)
 
 ```sh
 python -m pip install '.[qwen3,mcp,gradients,peft]'
 python examples/mcp_training.py --model /path/to/checkpoint --dataset benchmarks/wsp-practice-original-v1/gsm8k_train.jsonl
 ```
 
-在真实 SmolLM2-135M-Instruct 上，删一层后参数量由 134,515,008 降至 130,974,912。前馈通道剪枝后为 121,243,968，前馈宽度从 1,536 降至 1,280。两份检查点均重新加载。LoRA、DPO、蒸馏和剪后恢复各执行一步，LoRA 适配器重载后与工具包保存的有效更新一致。 [训练与压缩示例](../examples/mcp_training.py)
+On real SmolLM2-135M-Instruct, removing one layer reduced parameters from 134,515,008 to 130,974,912. Feed-forward channel pruning reduced parameters to 121,243,968 and width from 1,536 to 1,280. Both checkpoints reloaded. LoRA, DPO, distillation, and post-pruning recovery each ran one step; the reloaded LoRA adapter matched the toolkit's saved effective update. [Training and compression example](../examples/mcp_training.py)
 
-## 稀疏特征与双模型比较
+## Sparse features and two-model comparison
 
-宿主将字典放入 `features/<encoder_id>/`，目录里是 `manifest.json` 和 `weights.safetensors`。`describe_model` 列出和当前版本匹配的字典。`model_forward` 采集字典指定的站点，再把快照 ID 和字典 ID 传给 `extract_features`。结果包含最强触发词元、平均活跃特征数、逐来源重建误差，以及可读的特征响应数组。数组可用 `render_evidence` 的 `activation_heatmap` 视图绘制，指定轴为 `token_row` 和 `feature`。
+The host places a dictionary in `features/<encoder_id>/`, containing `manifest.json` and `weights.safetensors`. `describe_model` lists dictionaries matching the current version. `model_forward` collects the sites specified by the dictionary; pass snapshot and dictionary IDs to `extract_features`. Results include the strongest triggering tokens, mean active feature count, per-source reconstruction errors, and readable feature-response arrays. Plot arrays with the `activation_heatmap` view of `render_evidence`, using `token_row` and `feature` axes.
 
-| 字典文件 | 内容 |
+| Dictionary file | Contents |
 |---|---|
-| `manifest.json` | `format_version=1`，`method` 为 `sae` 或 `crosscoder`，`activation` 为 `relu`、`topk` 或 `jumprelu`。TopK 需传 `k`。`sources` 按输入顺序登记 `variant_id`、`site_id`，以及可选的 `input_scale`、`center_on_decoder_bias`。`weights_sha256` 保存权重文件的校验摘要 |
-| `weights.safetensors` | `b_enc` 是特征偏置。每个来源 `i` 的 `W_enc.i` 为 `[通道, 特征]`，`W_dec.i` 为 `[特征, 通道]`，`b_dec.i` 为 `[通道]`。JumpReLU 额外提供 `threshold[特征]` |
+| `manifest.json` | `format_version=1`; `method` is `sae` or `crosscoder`; `activation` is `relu`, `topk`, or `jumprelu`. TopK requires `k`. `sources` registers `variant_id`, `site_id`, and optional `input_scale` and `center_on_decoder_bias` in input order. `weights_sha256` holds the weights-file digest |
+| `weights.safetensors` | `b_enc` is the feature bias. For each source `i`, `W_enc.i` is `[channel, feature]`, `W_dec.i` is `[feature, channel]`, and `b_dec.i` is `[channel]`. JumpReLU also provides `threshold[feature]` |
 
-`compare_models` 的 `crosscoder` 视图接收 `encoder_id`、`left_artifact_id`、`right_artifact_id`，两份快照必须有相同的输入词元序列。这个视图调用同一个特征提取函数。公开 SAE 示例读取 SmolLM2 基座第 3 层前馈模块输出，使用 EleutherAI 发布的字典。联合字典示例用 SmolLM2-Instruct 和其真实权重候选拟合小字典，再在不同的输入上比较两边。 [基础检查点](https://huggingface.co/HuggingFaceTB/SmolLM2-135M) · [公开字典](https://huggingface.co/EleutherAI/sae-SmolLM2-135M-64x) · [联合字典论文](https://transformer-circuits.pub/2024/crosscoders/index.html) · [两种用法](../examples/mcp_features.py)
+The `crosscoder` view of `compare_models` accepts `encoder_id`, `left_artifact_id`, and `right_artifact_id`; snapshots must have the same input token sequence. This view calls the same feature extraction function. The public SAE example reads layer 3 feed-forward output from the SmolLM2 base using an EleutherAI dictionary. The joint dictionary example fits a small dictionary to SmolLM2-Instruct and a real weight candidate, then compares both on different inputs. [Base checkpoint](https://huggingface.co/HuggingFaceTB/SmolLM2-135M) · [Public dictionary](https://huggingface.co/EleutherAI/sae-SmolLM2-135M-64x) · [Crosscoder paper](https://transformer-circuits.pub/2024/crosscoders/index.html) · [Both examples](../examples/mcp_features.py)
 
 ```sh
 python examples/mcp_features.py --model /path/to/SmolLM2-135M --sae /path/to/layers.3.mlp
 python examples/mcp_features.py --model /path/to/SmolLM2-135M-Instruct --dataset benchmarks/wsp-practice-original-v1/gsm8k_train.jsonl
 ```
 
-## 隐藏维度切片与打包量化
+## Hidden-dimension slicing and packed quantization
 
-`compress_model` 的 SliceGPT、GPTQ 和 AWQ 共用校准文本与导出清单。SliceGPT 用单独的上游环境改变隐藏维度，重载时恢复切片后的跳连矩阵。GPTQ 和 AWQ 使用独立的 LLM Compressor 环境导出 4 位整数权重，清单包含原文件字节、实际导出字节和打包张量数。三种方法都已在 SmolLM2-135M-Instruct 上重载并执行前向。 [安装与运行](mcp-tools.md#packed-quantization--打包量化) · [SliceGPT 示例](../examples/mcp_slicegpt.py) · [GPTQ 与 AWQ 示例](../examples/mcp_quantization.py)
+SliceGPT, GPTQ, and AWQ in `compress_model` share calibration text and export manifests. SliceGPT changes hidden dimensions in a separate upstream environment and restores sliced skip-connection matrices at reload. GPTQ and AWQ export 4-bit integer weights using a separate LLM Compressor environment; the manifest includes original bytes, actual exported bytes, and packed tensor count. All three methods were reloaded and run on SmolLM2-135M-Instruct. [Installation and usage](mcp-tools.md#packed-quantization) · [SliceGPT example](../examples/mcp_slicegpt.py) · [GPTQ and AWQ example](../examples/mcp_quantization.py)
 
-## 特征归因图
+## Feature attribution graphs
 
-`trace_circuit(method="feature_attribution_graph")` 需要宿主登记独立的 Circuit Tracer 环境和匹配模型版本的逐层特征字典，并授权梯度。工具输出完整边矩阵、节点坐标、可绘图摘要，以及只用字典替代前馈层后的输出偏差。已在真实 SmolLM2-135M-Instruct 上生成并核对图。 [安装与运行](mcp-tools.md#feature-attribution-graphs--特征归因图) · [示例](../examples/mcp_feature_circuit.py)
+`trace_circuit(method="feature_attribution_graph")` requires a host-registered separate Circuit Tracer environment, per-layer feature dictionaries matching the model version, and gradient permission. It outputs the full edge matrix, node coordinates, plottable summaries, and output deviation after replacing feed-forward layers using only the dictionary. A graph was generated and checked on real SmolLM2-135M-Instruct. [Installation and usage](mcp-tools.md#feature-attribution-graphs) · [Example](../examples/mcp_feature_circuit.py)
 
-## 知识编辑
+## Factual editing
 
-`edit_facts` 用 ROME 编辑一条事实，用 MEMIT 批量编辑事实。宿主登记 EasyEdit 的源码和独立环境，并授权梯度与权重编辑。工具用校准文本采集真实激活，保存算法改动为补丁。应用补丁后，可以比较直接问题、同义问题和邻近事实。已在 SmolLM2-135M-Instruct 的 CPU 示例中验证。 [安装与运行](mcp-tools.md#factual-editing--知识编辑) · [示例](../examples/mcp_fact_editing.py)
+`edit_facts` uses ROME for one fact and MEMIT for batches. The host registers EasyEdit source and a separate environment and grants gradient and weight-edit permissions. The tool collects real activations from calibration text and saves algorithmic changes as a patch. After applying it, compare direct questions, paraphrases, and neighboring facts. This was validated in a SmolLM2-135M-Instruct CPU example. [Installation and usage](mcp-tools.md#factual-editing) · [Example](../examples/mcp_fact_editing.py)
 
-## API与证据
+## API and evidence
 
-| 接口 | 作用 | 已有证据 |
+| Interface | Purpose | Existing evidence |
 |---|---|---|
-| WeightStore、EditPolicy | 原始／当前张量、提案、撤销、原精度导出 | 源不变、精度物化及编辑约束检查 |
-| contrast_direction、project_output_direction | 匹配均值差及选列输出方向操作 | 明确代数、列支持与方向符号不变性 |
-| input_hessian、sparsegpt_reconstruct | 二阶统计、固定mask或自适应剪枝补偿 | 作者代码数值对照与真实0.6B十二条件实验 |
-| ForwardService、ForwardPolicy、PracticeSet | 固定采样、预算及数据角色的生成／teacher-forced | Qwen3／Llama与Qwen3.5混合架构检查；真实基座观测 |
-| HuggingFaceBackend | Qwen3／Llama密集观测及生成 | 真实0.6B 128文本、27,776 tokens |
-| Qwen35Backend | 原作Qwen3.5文本执行及混合层观测 | 473张量逐项核对；32文本、6,528 tokens；不执行15个MTP张量 |
-| CPUKernel、ProgrammingSession | 持久CPU分析、隔离文件／网络／设备及与前向服务连接 | 实际0.6B内核与编辑—观测通道已运行 |
+| WeightStore, EditPolicy | Original/current tensors, proposals, reversion, original-precision export | Checks for unchanged source, precision materialization, and edit constraints |
+| contrast_direction, project_output_direction | Matched mean differences and selected-column output-direction operations | Explicit algebra, column support, and direction-sign invariance |
+| input_hessian, sparsegpt_reconstruct | Second-order statistics and fixed-mask or adaptive pruning compensation | Numerical comparisons against author code and real 0.6B twelve-condition experiment |
+| ForwardService, ForwardPolicy, PracticeSet | Generation/teacher-forced execution with fixed sampling, budgets, and data roles | Qwen3/Llama and Qwen3.5 hybrid-architecture checks; real base observations |
+| HuggingFaceBackend | Qwen3/Llama dense observation and generation | Real 0.6B, 128 texts, 27,776 tokens |
+| Qwen35Backend | Original Qwen3.5 text execution and hybrid-layer observation | 473 tensors checked individually; 32 texts, 6,528 tokens; 15 MTP tensors are not executed |
+| CPUKernel, ProgrammingSession | Persistent CPU analysis, isolated files/network/devices, and forward-service connection | Real 0.6B kernel and edit–observation channel executed |
 
-两个后端从各自模块导入，宿主负责加载模型与设备调度：
+Import the two backends from their respective modules; the host loads models and schedules devices:
 
 ```python
 from weight_programming import WeightStore, ProgrammingSession, sparsegpt_reconstruct
 from weight_programming.hf_backend import HuggingFaceBackend       # qwen3 extra
-# 或在另一环境：
+# Or in a separate environment:
 from weight_programming.qwen35_backend import Qwen35Backend        # qwen35 extra
 ```
 
-CPU隔离内核需要Linux bubblewrap和虚拟环境Python；macOS可使用核心张量API。库不自行安排GPU作业。源码中的研究矩阵脚本不是全部已整理为公共API；OfficeBench执行器仍处于单独研究模块。
+The isolated CPU kernel requires Linux Bubblewrap and a virtual-environment Python; macOS can use the core tensor API. The library does not schedule GPU jobs. Research matrix scripts in the source have not all been organized as public APIs; the OfficeBench executor remains a separate research module.
 
-所有真实性能改善、完整任务与效率证据分别记录。真实观测完成不表示数学能力改善，局部重建不表示整模型保真，接口覆盖也不表示已经完成独立MIT复现。
+Evidence for performance improvements, complete tasks, and efficiency is recorded separately. Real observations do not establish mathematical improvement; local reconstruction does not establish full-model fidelity; interface coverage does not establish an independent MIT reproduction.
 
-## 分类器与原生适配器
+## Classifiers and native adapters
 
-DistilBERT 单标签分类器用 `model_forward(mode="predict")` 返回标签分数、概率和预测标签。它复用快照、热力图、探针、表示比较和权重补丁。SST-2 示例的 16 条真实输入与 Transformers 直接推理分数逐项一致。分类器与 SmolLM2 还通过了同文本的跨架构 CKA（按样本比较表示相似结构）。 [分类示例](../examples/mcp_classification.py) · [数据获取](../research/acquisition/prepare_sst2.py)
+For DistilBERT single-label classifiers, `model_forward(mode="predict")` returns label scores, probabilities, and the predicted label. It reuses snapshots, heatmaps, probes, representation comparison, and weight patches. Scores for 16 real SST-2 inputs matched direct Transformers inference elementwise. The classifier and SmolLM2 also passed cross-architecture CKA on the same texts, comparing structural similarity of representations across samples. [Classification example](../examples/mcp_classification.py) · [Data acquisition](../research/acquisition/prepare_sst2.py)
 
-原生 PEFT LoRA 用启动选项 `--peft-adapter` 或 Python 的 `peft_adapters` 登记。已有候选的适配器可由宿主调用 `tools.delta.import_peft_adapter(parent_variant_id, adapter_dir)` 绑定。它沿用 PEFT 的实际缩放与转置语义，并进入现有差分、合并和压缩接口。`compress_update` 可为不同张量设置不同秩；`project_weight` 可直接消费两组同坐标激活。 [运行说明](mcp-tools.md#imported-adapters-and-directions--外部适配器与方向) · [原生适配器示例](../examples/mcp_native_peft.py)
+Register native PEFT LoRA with `--peft-adapter` at startup or `peft_adapters` in Python. The host can bind an adapter for an existing candidate with `tools.delta.import_peft_adapter(parent_variant_id, adapter_dir)`. It follows PEFT's actual scaling and transpose semantics and enters the existing delta, merging, and compression interfaces. `compress_update` can assign different ranks to different tensors; `project_weight` can directly consume two sets of same-coordinate activations. [Usage](mcp-tools.md#imported-adapters-and-directions) · [Native adapter example](../examples/mcp_native_peft.py)

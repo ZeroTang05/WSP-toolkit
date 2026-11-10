@@ -1,4 +1,4 @@
-"""在真实 Llama 架构模型上压缩残差宽度，再用 SliceGPT 重载。"""
+"""Compress the residual width of a real Llama model, then reload it with SliceGPT."""
 
 import argparse
 import asyncio

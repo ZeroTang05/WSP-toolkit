@@ -1,4 +1,4 @@
-"""在宿主指定的 EasyEdit 环境中执行原库 ROME 与 MEMIT。"""
+"""Execute the original library ROME and MEMIT in the EasyEdit environment specified by the host."""
 
 import hashlib
 from importlib.metadata import version
@@ -8,7 +8,7 @@ import sys
 
 
 def main(request_path):
-    """读取校准统计和父版本，调用上游库并导出授权张量。"""
+    """Read calibration statistics and the parent version, call the upstream library, and export authorized tensors."""
     import torch
     from safetensors.torch import load_file, save_file
     from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -46,11 +46,11 @@ def main(request_path):
         stat = CombinedStat(mom2=SecondMoment(state={"count": count, "mom2": matrix.numpy() * count}))
         module_name = name.removesuffix(".weight")
         path = stats_dir / model_name / (dataset_name + "_stats") / f"{module_name}_float32_mom2_{samples}.npz"
-        # 写入 EasyEdit 本身的缓存格式，算法按正常路径加载实测统计量。
+        # Write the cache format of EasyEdit itself, and the algorithm loads the measured statistics according to the normal path.
         save_cached_state(path, stat, {"sample_size": samples})
 
     output_weight = model.get_output_embeddings().weight
-    # EasyEdit 按实际参数名查词表头。共享词嵌入时，该参数可能登记在嵌入模块下。
+    # EasyEdit finds the vocabulary head by its parameter name. With tied embeddings, that parameter may be registered under the embedding module.
     head_weight_name = next(name for name, parameter in model.named_parameters() if parameter is output_weight)
     common = dict(layers=request["layers"], fact_token="subject_last", v_num_grad_steps=request["steps"],
                   v_lr=request["learning_rate"], v_loss_layer=model.config.num_hidden_layers - 1,

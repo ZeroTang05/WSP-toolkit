@@ -1,4 +1,4 @@
-"""用隔离的 Python 环境执行基于检查点的上游算法。"""
+"""Execute checkpoint-based upstream algorithms using an isolated Python environment."""
 
 import json
 import os
@@ -7,7 +7,7 @@ import subprocess
 
 
 def run_model_worker(python, script_name, directory, device, timeout=1800):
-    """在同一设备的独立进程交换文件，并返回上游日志和结果。"""
+    """Exchange files with an isolated process on the same device and return upstream logs and results."""
     env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1", HF_HUB_OFFLINE="1", HF_DATASETS_OFFLINE="1",
                TOKENIZERS_PARALLELISM="false", HF_DATASETS_CACHE=str(directory / "datasets"))
     visible = env.get("CUDA_VISIBLE_DEVICES")

@@ -24,7 +24,7 @@ def sha(path):
 
 
 def slice_region(shape, region, *, max_values=None):
-    """将各轴的半开区间转换为张量切片。"""
+    """Convert half-open intervals on each axis to tensor slices."""
     if len(region) != len(shape) or any(type(start) is not int or type(stop) is not int
                                         or not 0 <= start < stop <= length
                                         for (start, stop), length in zip(region, shape)):
@@ -93,14 +93,14 @@ class WeightStore:
         with safe_open(str(self._source_path(name)),framework='pt',device='cpu') as stream:return stream.get_tensor(name)
 
     def tensor_info(self, name):
-        """读取权重文件的形状和原始精度，无需载入数值。"""
+        """Read a weight tensor’s shape and original precision without loading its values."""
         path = self._source_path(name)
         with safe_open(str(path), framework="pt", device="cpu") as stream:
             view = stream.get_slice(name)
             return {"name": name, "shape": view.get_shape(), "dtype": view.get_dtype(), "shard": path.name}
 
     def read_native_slice(self, name, region):
-        """按原精度直接读取检查点中的一小块权重。"""
+        """Read a small block of checkpoint weights directly at original precision."""
         with safe_open(str(self._source_path(name)), framework="pt", device="cpu") as stream:
             view = stream.get_slice(name)
             return view[slice_region(view.get_shape(), region, max_values=4096)]

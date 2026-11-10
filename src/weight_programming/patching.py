@@ -63,7 +63,7 @@ def replace_activation(backend,kind,layer,clean,positions,channels=None,*,additi
 
 
 def token_metrics(row, target, alternative):
-    """在梯度筛选和精确干预中使用同一组可微分分数。"""
+    """Use the same differentiable scores for gradient screening and exact intervention."""
     row = row.float()
     log_probability = row[target] - torch.logsumexp(row, dim=-1)
     return {"logit_difference": row[target] - row[alternative],
@@ -75,7 +75,7 @@ def metrics(logits, query, target, alternative):
 
 
 def prepare_pair(backend, policy, clean_text, corrupt_text, target_token, alternative_token, query_position=None):
-    """校验成对输入的词元对齐、目标分数与上下文预算。"""
+    """Verify token alignment, target score, and context budget of paired inputs."""
     clean_ids, corrupt_ids = backend.encode(clean_text), backend.encode(corrupt_text)
     if len(clean_ids) != len(corrupt_ids):
         raise ValueError("Paired same-token-length corruption required; no guessed alignment")
@@ -95,7 +95,7 @@ def prepare_pair(backend, policy, clean_text, corrupt_text, target_token, altern
 
 @torch.inference_mode()
 def paired_interventions(backend, snapshot, pair, sites, target, alternative, read):
-    """一次计算干净和受扰基线，再逐个临时改变站点。"""
+    """Calculate clean and disturbed baselines once and temporarily change sites one by one."""
     clean_ids, corrupt_ids, query = pair
     hidden = sorted({site["layer"] for site in sites if site["kind"] == "residual"})
     mlp = sorted({site["layer"] for site in sites if site["kind"] == "mlp_input"})

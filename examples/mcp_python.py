@@ -1,4 +1,4 @@
-"""在 Linux 上用真实检查点验证持久 Python 和补丁提案。"""
+"""Validating persistent Python and patch proposals on Linux with real checkpoints."""
 
 import argparse
 import asyncio
@@ -12,7 +12,7 @@ from mcp.client.stdio import stdio_client
 
 
 async def main(model):
-    """用两个 Python 单元保存权重片段并提交一个可重放的补丁。"""
+    """Save a weight slice in two Python cells and submit a replayable patch."""
     with TemporaryDirectory(prefix="wsp-python-") as workspace:
         server = StdioServerParameters(command=sys.executable,
                                        args=["-m", "weight_programming.mcp_server", "--model", model,

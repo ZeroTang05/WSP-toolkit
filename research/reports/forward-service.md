@@ -1,54 +1,54 @@
-# 带预算的生成与密集观测：可执行工具接口
+# Budgeted generation and dense observation: an executable tool interface
 
-本文保留成文时的实验设置、结果与状态。当前项目进度见[项目状态](../../PROJECT_STATUS.md)。
+This report preserves the experimental settings, results, and status at the time of writing. For the current project progress, see [Project Status](../../PROJECT_STATUS.md).
 
-2026-11-07。依据已归档的MIT实验8首轮协议扩充工具库。本次实现的HF后端支持固定版本的Qwen3／Llama decoder；新增Qwen3.5独立适配已完成真实观测，见[qwen35-observation-study.md](qwen35-observation-study.md)；vLLM可比性和原作完整复现未完成。
+2026-11-07. The toolkit was expanded using the archived first-round MIT Experiment 8 protocol. This HF backend supports fixed versions of Qwen3/Llama decoders; the separate Qwen3.5 adaptation has completed real observations, described in [qwen35-observation-study.md](qwen35-observation-study.md). Comparability with vLLM and a complete reproduction of the original work remain open.
 
-## 接口与证据链
+## Interface and evidence chain
 
-`WeightStore`保存CPU上的编辑提案，`ForwardService`执行一次确定权重快照上的请求，`BudgetLedger`记录成功、失败和仍在执行的调用。它们分别负责写入、观测和预算；程序设计者不能通过更改请求字段随意改变采样协议。
+`WeightStore` saves the editing proposal on the CPU, `ForwardService` executes a request on a fixed weight snapshot, and `BudgetLedger` records success, failure, and calls that are still being executed. They are responsible for writing, observing, and budgeting respectively; the programmer cannot arbitrarily change the sampling protocol by changing the request fields.
 
-底层方法来源是[作者工具协议](https://github.com/RikiyaT/lm_understand-logs/blob/main/exp8_math/runs/p50c/turns/t001/prompt.txt)。本实现独立重建协议；生成库的版本、数学评分器与观测轴语义均记录在输出，不声称复用了未公开的前向服务器。
+The underlying method comes from the [author tool protocol](https://github.com/RikiyaT/lm_understand-logs/blob/main/exp8_math/runs/p50c/turns/t001/prompt.txt). This implementation reconstructs the protocol independently. Its outputs record the generation-library version, math scorer, and observation-axis semantics; it does not claim to reuse an undisclosed forward server.
 
-| 请求 | 已实现的返回 | 关键语义 |
+| Request | Implemented return | Key semantics |
 |---|---|---|
-| generate original／edited | 文本、token IDs、终止原因、长度、循环尾部诊断、可选成绩 | 配置中的temperature／top-p／top-k／presence penalty固定；每题每次样本有稳定种子 |
-| generate both | 原模型和编辑模型的上述结果及配对差异 | 两边同题、同提示、同采样种子；重复样本按题目聚合后计算标准误 |
-| teacher_forced | token log-prob、top-k、残差、MLP输入、注意力和长度／mask | 使用右填充数组；位置与归一化定义见meta，不以padding当作真实token |
-| generation activations | 指定层的prompt末位置与生成前缀平均激活 | 采样后teacher-forced replay；包含最后一个被采样token，额外计算单独记账 |
+| generate original／edited | Text, token IDs, termination reason, length, loop-tail diagnostics, optional scores| The temperature/top-p/top-k/presence penalty in the configuration is fixed; each question and each sample has a stable seed|
+| generate both | The above results and paired differences between the base and edited models| Both sides have the same question, the same prompt, and the same sampling seed; repeated samples are aggregated by question to calculate the standard error.|
+| teacher_forced | token log-prob, top-k, residual, MLP input, attention and length/mask| Arrays are right-padded; see meta for position and normalization definitions. Padding is not treated as a real token|
+| generation activations | Average activation at the prompt’s final position and over the generated prefix at the specified layer| Teacher-forced replay after sampling includes the last sampled token; additional computation is recorded separately|
 
-生成前向与密集观测共享一个成功请求预算；样本数、token数、attention大小、填充后的返回字节均有上限。相同请求次数不等于相同实际计算，元数据另记录物理model forward次数、输入／输出tokens、重放及耗时。
+Generation forwards and dense observations share a budget of successful requests. Sample count, token count, attention size, and returned bytes after padding are all capped. Equal request counts do not imply equal computation. Metadata also records physical model forward passes, input/output tokens, replay, and elapsed time.
 
-## 数值定义与实现边界
+## Numerical definition and implementation boundaries
 
-- `token_logprobs[t]`表示输入第t个token在其前缀下的原始模型条件概率；第一个token和padding为NaN。
-- `topk[t]`表示第t个query位置的下一token分布。它与前一项的下标语义不同；存储ID及归一化log-prob。
-- `hidden_0`为token embedding输出，`hidden_l`为block l−1的原始残差输出，末层也在最终模型norm之前。
-- `mlp_l`为该层`down_proj`的输入，即门控中间激活。它不是MLP输出，也不是梯度重要性。
-- attention仅在适用层返回真实概率；请求时临时切换到eager计算，完成后恢复后端。线性注意力不能伪装成普通注意力矩阵。
-- presence penalty只对已经生成过的token减一次分，不惩罚仅在prompt中出现的token，不按出现次数叠加；仍不据此声称不同引擎逐token相同。
+- `token_logprobs[t]` represents the base model conditional log-probability of the t-th input token given its prefix; the first token and padding are NaN.
+- `topk[t]` represents the next token distribution at the t-th query position. It has different subscript semantics from the previous item; it stores ID and normalized log-prob.
+- `hidden_0` is the token embedding output, `hidden_l` is the original residual output of block l−1, and the last layer is also before the final model norm.
+- `mlp_l` is the input of layer `down_proj`, the gated intermediate activation, not the MLP output or gradient-based importance.
+- Attention returns actual probabilities only for applicable layers. When requested, it temporarily switches to eager computation and restores the backend afterward. Linear attention is not represented as an ordinary attention matrix.
+- The presence penalty is applied once to tokens already generated, not to tokens appearing only in the prompt, and does not accumulate with repeated occurrences. This does not establish token-by-token equivalence across engines.
 
-HF适配器目前限定Transformers 4.57.6的Qwen3／Llama，核对加载后的张量与源检查点；不接受未实现的模型类型。Qwen3.5另用Transformers5.3.0适配器，已完成32条原始基座观测；两条运行时分别安装。
+The HF adapter for Transformers 4.57.6 supports Qwen3/Llama and checks loaded tensors against the source checkpoint; unsupported model types are rejected. Qwen3.5 uses a separate Transformers 5.3.0 adapter and has completed 32 original-base observations. The two runtimes are installed separately.
 
-内核与服务使用内容寻址的提案文件。服务每次读取最新提交并冻结已验证快照，不在请求运行中跟随下一次编辑；在结束或失败时恢复模型参数。原生精度下的实际张量hash用于变体标识，区分FP32提案与执行权重。
+Proposals use content addressing across the kernel and service. The service reads the latest committed proposal and freezes its verified snapshot for each request; subsequent edits do not affect a running request. It restores model parameters on completion or failure. The actual tensor hash at native precision is used for variant identification, distinguishing FP32 proposals from execution weights.
 
-本库不是进程沙箱。执行任意Python、禁用网络／GPU、隐藏参考编辑与测试数据、以及CPU／GPU调度仍由宿主负责。当前服务是Python请求边界，尚非HTTP服务或完整隔离agent执行器。
+This library is not a process sandbox. Executing arbitrary Python, disabling network/GPU, hiding reference editing and test data, and CPU/GPU scheduling remain the responsibility of the host. The current service is a Python request boundary, not an HTTP service or a fully isolated agent executor yet.
 
-## 数学评分与循环诊断
+## Math scoring and loop diagnostics
 
-`MathVerifyGrader`采用已核对作者源码的boxed提取约定及固定依赖：math-verify 0.9.0、latex2sympy2_extended 1.11.0、ANTLR 4.13.2。相关提取代码保留出处及MIT许可。它在主线程执行有时限的符号评分；不在缺包或不支持的线程里悄悄改用字符串相等。
+`MathVerifyGrader` adopts the boxed extraction convention and fixed dependencies that have been verified by the author's source code: math-verify 0.9.0, latex2sympy2_extended 1.11.0, ANTLR 4.13.2. The relevant extraction code retains the source and MIT license. It performs time-bounded symbolic scoring on the main thread; it does not quietly switch to string equality in threads with missing or unsupported packages.
 
-未配置评分器时，服务明确返回`correct=null`及`accuracy=null`；文本提取和循环诊断仍可用，不能把它当成任务成绩。周期尾部、重复4-gram比例、空白退化和达到长度上限分别记录，不用其中一项直接替代“答案正确”。
+When the grader is not configured, the service explicitly returns `correct=null` and `accuracy=null`; text extraction and loop diagnosis are still available, and cannot be regarded as task scores. Periodic tails, repeated 4-gram ratio, blank degeneration, and reaching the length limit are recorded separately. None is used as a direct substitute for answer correctness.
 
-## 已完成的必要检验
+## Necessary inspections completed
 
-在真正的Qwen3模型实现上构造小型随机checkpoint，对照原生前向结果检查：逐token概率及top-k对齐、残差与末norm关系、MLP线性重建、注意力概率和因果mask、不同长度padding。另测跨进程式新提案快照、失败后的权重／预算恢复、同权重配对采样完全一致，以及激活重放确实包含末token。四项组合检查通过，原先四项直接权重检查也再次通过。
+A small random checkpoint built with the real Qwen3 implementation was checked against native forward results: token-by-token probability and top-k alignment, the relationship between residuals and final normalization, MLP linear reconstruction, attention probabilities and the causal mask, and padding across different lengths. Further checks covered new proposal snapshots across processes, weight and budget restoration after failure, exact agreement in paired sampling with identical weights, and inclusion of the last token in activation replay. All four combined checks passed, as did the original four direct-weight checks.
 
-真实Qwen3-0.6B CPU观测教程已完成：128条训练派生文本，27,776个tokens，1次成功请求、128次实际模型前向，约94.44秒。残差、MLP输入及概率等预估载荷0.91GB。FP32参考文本观测不作为生成准确率或能力提升结论；代码已冻结，小型结果见`artifacts/toolkit/forward-observation-v1/Qwen3-0.6B/`。真实激活进一步用于[剪枝与补偿组合实验](reconstruction-study.md)。
+The Qwen3-0.6B CPU observation tutorial completed on a real model: 128 training-derived texts, 27,776 tokens, 1 successful request, 128 actual model forwards, and approximately 94.44 seconds. The estimated payload for residuals, MLP inputs, and probabilities was 0.91 GB. Observations on FP32 reference text do not establish generation accuracy or capability gains. The code was frozen; small results are in `artifacts/toolkit/forward-observation-v1/Qwen3-0.6B/`. The real activations were further used in [Pruning and compensation combined experiments](reconstruction-study.md).
 
-## 可调用示例
+## Callable example
 
-以下假设宿主已加载支持的模型、tokenizer和经授权的练习集；不包含公开测试标签：
+The following assumes that the host has loaded supported models, tokenizers, and authorized exercise sets; public test labels are not included:
 
 ```python
 from weight_programming import WeightStore, ForwardPolicy, PracticeSet, ForwardService
@@ -73,4 +73,4 @@ paired = service.request({
 })
 ```
 
-教程的实际运行不调用训练或优化器。后续还需实现隔离内核／服务传输、原作架构与生成后端、完整公开任务确认，以及独立程序设计者的工具选择轨迹。
+The tutorial run invokes neither training nor an optimizer. Future work includes isolated kernel/service communication, the original architecture and generation backend, complete public-task confirmation, and a record of tool choices by an independent programmer.

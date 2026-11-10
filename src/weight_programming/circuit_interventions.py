@@ -1,4 +1,4 @@
-"""在残差流的写入端与读取端之间执行边干预和归因。"""
+"""Perform edge intervention and attribution between the writing and reading sides of the residual stream."""
 
 from collections import defaultdict
 from contextlib import ExitStack
@@ -9,7 +9,7 @@ from .patching import token_metrics
 
 
 class ResidualCircuit:
-    """将 Llama 和 Qwen3 的残差流拆成嵌入、整块注意力和前馈写入。"""
+    """Split the Llama and Qwen3 residual stream into embedding, whole-attention, and feedforward writes."""
 
     def __init__(self, backend):
         self.backend = backend
@@ -25,7 +25,7 @@ class ResidualCircuit:
         self.readers["output"] = backend.decoder.norm
 
     def validate(self, edges):
-        """边必须从已有写入端连接到其后的读取端。"""
+        """An edge must connect from an existing write end to a subsequent read end."""
         for source, target in edges:
             if source not in self.order or target not in self.readers or self.order[source] >= self.order[target]:
                 raise ValueError(f"Invalid residual edge {source} -> {target}")
@@ -33,7 +33,7 @@ class ResidualCircuit:
             raise ValueError("Residual edges must be distinct")
 
     def forward(self, ids, query, usage, *, sources=(), targets=(), patches=None, gradients=False):
-        """按需收集分支输出和归一化前输入，运行一次真实模型。"""
+        """Collect branch outputs and pre-normalized inputs as needed and run the real model once."""
         model, device = self.backend.model, self.backend.device
         patches = patches or {}
         writes, reads = {}, {}
@@ -72,7 +72,7 @@ class ResidualCircuit:
         return logits, writes, reads
 
     def isolated_path(self, clean_ids, query, usage, path, clean_writes, clean_reads, corrupt_writes, positions, strength):
-        """只让受扰写入沿指定路径传递，各目标的其余输入固定为干净基线。"""
+        """Only the disturbed writes are passed along the specified path, and the remaining input to each target is fixed to the clean baseline."""
         def route(source, target):
             def patch(original, writes):
                 root = source == path[0]
@@ -85,7 +85,7 @@ class ResidualCircuit:
         return self.forward(clean_ids, query, usage, sources=path[1:-1], patches=patches)[0]
 
     def replace_edges(self, clean_ids, query, usage, edges, corrupt_writes, positions):
-        """把选定边替换为受扰写入，每个发送端在其他连接上照常传递。"""
+        """Replace selected edges with perturbed writes while each sender passes normally along other connections."""
         if not edges:
             return self.forward(clean_ids, query, usage)[0]
         incoming = defaultdict(list)
@@ -102,7 +102,7 @@ class ResidualCircuit:
                             patches={node: replace(sources) for node, sources in incoming.items()})[0]
 
     def edge_estimates(self, clean_ids, corrupt_ids, query, usage, edges, pair, metric):
-        """一次干净反向取得各读取端梯度，再与每条边的写入差值做点积。"""
+        """Use one clean backward pass to obtain gradients at each read end, then dot them with the write difference for each edge."""
         sources = list(dict.fromkeys(source for source, _ in edges))
         targets = list(dict.fromkeys(target for _, target in edges))
         _, corrupt, _ = self.forward(corrupt_ids, query, usage, sources=sources)
@@ -119,7 +119,7 @@ class ResidualCircuit:
 
 
 def _add_delta(baseline, delta, positions):
-    """只在指定词元位置替换边，保持模型执行精度。"""
+    """Replace edges only at specified token positions while preserving model execution precision."""
     if positions is None:
         return (baseline.float() + delta).to(baseline.dtype)
     value = baseline.clone()
@@ -128,5 +128,5 @@ def _add_delta(baseline, delta, positions):
 
 
 def score(logits, pair, metric):
-    """与站点干预工具共用同一套下一词元分数。"""
+    """Share the same next-token scores with the site intervention tool."""
     return token_metrics(logits, pair["target_token"], pair["alternative_token"])[metric]

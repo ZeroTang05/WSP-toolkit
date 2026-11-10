@@ -21,7 +21,7 @@ MAX_CELL_ARRAY_BYTES = 32 * 1024**2
 class CPUKernel:
     @staticmethod
     def supported():
-        """检查是否具备用于真实隔离的 Linux 运行时。"""
+        """Check if a Linux runtime is available for real isolation."""
         return os.name == 'posix' and Path('/proc').exists() and shutil.which('bwrap') is not None
 
     def __init__(self, model_dir, practice_dir, work_dir, control_dir, *,

@@ -1,4 +1,4 @@
-"""将隔离 Python 会话接到模型版本、数组产物和补丁登记。"""
+"""Connect isolated Python sessions to model versions, array artifacts, and patch registration."""
 
 from dataclasses import dataclass
 import hashlib
@@ -26,7 +26,7 @@ RUN_PATTERN = r"python_[0-9a-f]{32}"
 
 @dataclass
 class KernelSession:
-    """持有一个模型版本及其独立运行目录。"""
+    """Holds a model version and its independent run directory."""
 
     variant_id: str
     folder: TemporaryDirectory
@@ -40,7 +40,7 @@ class KernelSession:
 
 
 class PythonTools:
-    """管理隔离进程，所有公开产物由宿主校验和发布。"""
+    """Manage isolated processes; the host validates and publishes all public artifacts."""
 
     def __init__(self, tools, python=None):
         if not CPUKernel.supported():
@@ -54,7 +54,7 @@ class PythonTools:
         self.lock = RLock()
 
     def _session(self, session_id, variant_id):
-        """开启一次真实隔离进程，之后沿用同一命名空间。"""
+        """Start an isolated process and reuse its namespace for subsequent calls."""
         current = self.sessions.get(session_id)
         if current is not None:
             if current.variant_id != variant_id:
@@ -86,7 +86,7 @@ class PythonTools:
         return current
 
     def _inputs(self, session, run_id, inputs):
-        """复制本次明确授权的数组到隔离进程的只读目录。"""
+        """Copy explicitly authorized arrays to the isolated process’s read-only directory."""
         data = {}
         total = 0
         for name, artifact_id in inputs.items():
@@ -103,7 +103,7 @@ class PythonTools:
 
     @staticmethod
     def _outputs(folder, outputs):
-        """只读取常规文件，检查实际字节数、数组轴和有限值。"""
+        """Read only regular files, checking actual byte counts, array axes, and finite values."""
         data = {}
         used = 0
         if not outputs:
@@ -130,14 +130,14 @@ class PythonTools:
         return data, used
 
     def _write_run(self, record):
-        """将实际用量与产物登记到宿主可读的运行记录。"""
+        """Record actual usage and artifacts in host-readable run records."""
         path = self.runs / (record["run_id"] + ".json")
         staged = path.with_suffix(".tmp")
         staged.write_text(json.dumps(record, ensure_ascii=False, allow_nan=False), encoding="utf-8")
         staged.replace(path)
 
     def execute_python(self, session_id, variant_id, code, input_artifacts=None, outputs=None, edits=None):
-        """执行一段代码，返回有限文本和通过宿主校验的产物。"""
+        """Execute code and return bounded text and host-validated artifacts."""
         inputs = input_artifacts or {}
         outputs = outputs or {}
         edits = edits or []
@@ -184,14 +184,14 @@ class PythonTools:
 
     @staticmethod
     def get_run(workspace, run_id):
-        """查一个已记录的隔离计算。"""
+        """Look up a recorded isolated computation."""
         if not re.fullmatch(RUN_PATTERN, run_id):
             raise ValueError("Invalid Python run ID")
         path = workspace / "python" / "runs" / (run_id + ".json")
         return json.loads(path.read_text(encoding="utf-8"))
 
     def close(self):
-        """退出时回收本实例启动的进程和临时目录。"""
+        """Clean up processes and temporary directories started by this instance on exit."""
         with self.lock:
             for session in self.sessions.values():
                 session.close()

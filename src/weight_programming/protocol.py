@@ -139,7 +139,7 @@ class BudgetLedger:
             failed=sum(r['status']=='failed' for r in d['attempts']),reserved=sum(r['status']=='running' for r in d['attempts']),limit=self.policy.passes))
 
     def lookup(self, number):
-        """按运行序号读已有账本记录。"""
+        """Read existing ledger records by running sequence number."""
         data = json.loads(self.path.read_text())
         if not 1 <= number <= len(data['attempts']):
             raise KeyError(number)

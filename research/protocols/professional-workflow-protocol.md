@@ -1,69 +1,69 @@
-# 专业工作流：协作收益、角色编程与工具作用的分离
+# Professional Workflow: Collaboration Gains, Separation of Role Programming and Tool Function
 
-2026-11-07。研究协议，尚无本协议下的专业任务成绩。数据集范围、来源与限制见[主路线](../roadmap.md#41-专业工作流候选及选择)。
+2026-11-07. Research protocol, there are no professional assignment results under this protocol. The scope, sources and limitations of the data set can be found in [Main Route](../roadmap.md#41-professional-workflow-candidates-and-selection).
 
-## 研究对象
+## Research object
 
-希望证明的完整链条是：专业任务存在可利用的分工 → 固定多Agent系统有协作收益 → 角色专用参数操作进一步改善系统 → 压缩在明确的质量约束下减少实际成本。每个箭头需要独立实验，不能从专业任务“看起来复杂”直接推断。
+The proposed chain is: feasible division of labor for professional tasks → collaboration gains in a fixed multi-agent system → further gains from role-specific parameter operations → lower actual cost through compression under explicit quality constraints. Each arrow requires independent experimentation and cannot be directly inferred from the "seeming complexity" of specialized tasks.
 
-4B是第三阶段各角色的目标基座；强程序设计者负责离线诊断、选择操作和提出程序。最终测试时程序设计者退出任务执行。如果仍由强模型在线规划、审核或接管，它属于另一个混合系统条件，其token、延迟和费用全部计入。
+4B is the target base for each role in the third stage; the strong programmer is responsible for offline diagnosis, selecting operations and proposing programs. The programmer is absent from task execution during the final test. If the stronger model still plans, reviews, or takes over online, it belongs to another hybrid system condition, and its tokens, delays and fees are all included.
 
-## 数据与任务梯度
+## Data and task gradient
 
-OfficeBench用于跨应用执行及中间文件传递；Finch用于表格／文件驱动的财会工作；法律迁移从LegalAgentBench与Harvey LAB中依赖可复现的一套开始。任务量、专业深度与评价可靠性是不同轴，不能只按题数选择。
+OfficeBench is used for cross-application execution and intermediate file transfer; Finch is used for form/document-driven accounting work; legal migration starts by relying on a reproducible set in LegalAgentBench and Harvey LAB. Task volume, professional depth and evaluation reliability are on different axes and cannot be selected based solely on the number of questions.
 
-| 阶段任务 | 最终成果／中间状态 | 可能的分工假设 | 首要难点 | 预期使用的工具族 |
+| stage tasks| final result/intermediate state| Possible division of labor hypothesis| First difficulty| Intended tool family|
 |---|---|---|---|---|
-| 跨应用办公 | 文档、表格、邮件／应用状态 | 计划、应用执行、成果核对 | 文件状态和动作协议、遗漏步骤 | 观测、角色LoRA、层干预 |
-| 财会工作 | 可追溯的数值分析、工作簿、报告 | 源表对齐、计算建模、审阅交付 | 单位、公式、跨表引用、数字与文字一致性 | 角色适配、更新组合、因果定位、补偿 |
-| 法律工作 | 带来源的检索／分析／文书 | 材料整理、证据与法律分析、撰写复核 | 引用支持、事实约束、长上下文、多材料综合 | 观测、角色适配、干预诊断；事实编辑单独研究 |
+| Work across applications| Documents, forms, emails/application status| Planning, application execution, results verification| File status and action protocols, missing steps| Observation, role LoRA, layer intervention|
+| Accounting work| Traceable numerical analysis, workbooks, reports| Source table alignment, computational modeling, review and delivery| Units, formulas, cross-table references, numerical and text consistency| Role adaptation, updated combination, causal positioning, compensation|
+| legal work| Search/Analysis/Documentation with Sources| Material compilation, evidence and legal analysis, writing review| Citation support, fact constraints, long context, multi-material synthesis| Observation, role adaptation, intervention diagnosis; independent research by fact editor|
 
-以上角色是待检验的系统设计，不是声称各数据集官方采用此分工。先测两角色及三角色方案；不预设Agent越多越好。
+These roles are proposed system designs, not official divisions of labor established by each dataset. Test two-role and three-role configurations first; do not assume that more agents are better.
 
-对公开任务按源工作空间／案件／公司／模板谱系分组。开发、角色训练和最终确认的文件谱系不能重叠。若无官方训练集，另建开发任务或发布明确命名的derived split；最终报告覆盖任务数、剔除规则及未覆盖输入类型。只支持文本的4B使用固定解析器，避免不同条件借助不同强度的视觉辅助。
+Group public tasks by source workspace/case/company/template lineage. Document lineages for development, role training, and final confirmation cannot overlap. If there is no official training set, create another development task or publish a clearly named derived split; the final report covers the number of tasks, elimination rules, and uncovered input types. The text-only 4B model uses a fixed parser to avoid using visual aids of different strengths under different conditions.
 
-## 实验A：协作是否真的有效
+## Experiment A: Does collaboration really work?
 
-| 条件 | 模型与预算 | 解决的归因问题 |
+| condition| Models and budgets| Solved attribution issues|
 |---|---|---|
-| 强单Agent | 同4B，同环境／工具，有明确计划和任务记忆 | 防止弱提示基线夸大协作收益 |
-| 单Agent修订 | 同4B，自检与修订，总预算匹配 | 分工是否优于多次思考 |
-| 独立采样＋选取 | 同4B，多候选及固定选择器，总预算匹配 | 分工是否优于并行探索 |
-| 同基座多Agent | 同4B，各角色仅提示不同 | 纯拓扑与角色提示收益 |
+| Strong single agent| Same as 4B, same environment/tools, clear plan and task memory| Prevent weak-prompt baselines from exaggerating collaboration gains|
+| Single Agent revision| Same as 4B, self-inspection and revision, total budget matching| Does division of labor outperform multiple rounds of reasoning?|
+| Independent sampling + selection| Same as 4B, multiple candidates and fixed selector, total budget matching| Is division of labor better than parallel exploration?|
+| Multiple Agents on the same base| Same as 4B, only the role prompts differ| Pure topology and role-prompt gains|
 
-共同报告固定资源预算下的质量，以及达到固定质量时的成本。工作流长短不同，不能只匹配调用次数；至少分别提供总生成token约束和真实墙钟／设备驻留成本，说明并行度。选择器／复核器不读取答案或隐藏rubric评分反馈。
+Jointly report quality under a fixed resource budget and the cost to achieve fixed quality. The length of the workflow is different, so you cannot just match the number of calls; at least provide the total generated token constraints and the real wall clock/device resident cost to explain the degree of parallelism. The selector or reviewer does not see answer keys or hidden rubric feedback.
 
-评价以官方完成／成果评分为主。对同一任务配对比较，置信区间按独立工作空间聚类，不把相关子任务或多次采样当独立样本。预先定义最小有意义提升，结合区间和成本前沿判断。只有开发集发现协作收益且确认集支持，才把该系统作为“可被角色抽取”的主实验对象；其余系统保留为负结果。
+Evaluation is based on official completion/result scores. For paired comparisons of the same task, the confidence intervals are clustered according to independent workspaces, and related subtasks or multiple samplings are not regarded as independent samples. Predefine the minimum meaningful improvement, combined with interval and cost frontier judgments. Only if development shows a collaboration gain and confirmation supports it will the system become the main target for role extraction; the other systems will be retained as negative results.
 
-## 实验B：参数编程增益来自哪里
+## Experiment B: Where does parameter programming gain come from?
 
-固定已选拓扑、角色提示、输入工具和停止规则。对照依次为：原始4B角色；普通角色SFT／LoRA；共享多任务LoRA；同工具固定配方／随机或BO搜索；LLM使用工具库提出程序。所有条件共享可用训练材料，记录额外教师轨迹与查询成本。
+Fixed selected topology, role prompts, input tools, and stopping rules. The comparisons are as follows: original 4B role; ordinary role SFT/LoRA; shared multi-task LoRA; same tool fixed formula/random or BO search; LLM uses tool library to propose programs. All conditions share available training materials and record additional teacher trajectories and query costs.
 
-角色训练材料应是该角色实际可见上下文、动作／输出及可核实反馈。最终成果合格不意味着每个中间步骤都合格；不能将整条成功轨迹未经审查地全部当作正例。模型生成的思考文本也不自动构成可信内部推理监督。
+Role training material should contain the context actually visible to the role, its actions and outputs, and verifiable feedback. Qualifying the final product does not mean that each intermediate step is qualified; the entire success trajectory cannot be accepted as a positive example without review. Nor do model-generated think texts automatically constitute trustworthy internal reasoning oversight.
 
-先做单角色替换，再联合替换。定义系统质量Q、未编辑系统S及角色i的替换S_i：
+Do single role replacement first, then joint replacement. Define system quality Q, unedited system S and replacement S_i of role i:
 
-    单角色效应 Δ_i = Q(S_i) − Q(S)
-    两角色交互 I_ij = Q(S_ij) − Q(S_i) − Q(S_j) + Q(S)
+    Single role effect Δ_i = Q(S_i) − Q(S)
+    Two roles interact I_ij = Q(S_ij) − Q(S_i) − Q(S_j) + Q(S)
 
-交互来自系统实验，不由权重cosine推断。单独角色分数提升但系统退化，可能来自文件协议改变、审阅分布不匹配或错误传播；同时测原上游输入和真实新上游输入。联合替换没有收益时不把各局部分数相加当作成功。
+Interactions are derived from system experiments and are not inferred from weight cosine. Individual role scores improve but system degrades, possibly from file protocol changes, review distribution mismatch, or error propagation; test original upstream input and real new upstream input simultaneously. A sum of local scores does not establish success when joint replacement yields no system gain.
 
-## 工具使用需要怎样的证据
+## What evidence is needed for tool use?
 
-| 观测问题 | 合理操作与论文起点 | 必须验证的替代解释 |
+| Observation problem| Reasonable operation and starting point of thesis| alternative explanations that must be verified|
 |---|---|---|
-| 角色动作或输出协议不稳定 | LoRA角色适配；有可靠偏好对再考虑DPO | 相同数据的普通后训练已足够，LLM选工具没有增益 |
-| 两类更新组合后相互损伤 | Task Arithmetic；TIES的符号冲突处理 | 损伤来自提示／训练数据差异，非参数冲突 |
-| 特定失败与内部组件相关 | 层消融、配对activation patching | 干预破坏一般语言能力，或只是离分布效应 |
-| 冗余占用存储／运算 | Wanda、LLM-Pruner、ShortGPT、SVD-LLM | 稀疏零值或低秩表示没有转化为实际运行收益 |
-| 剪后角色能力受损 | SparseGPT局部补偿；LLM-Pruner式LoRA恢复 | 只降低校准重建误差，完整工作成果并未改善 |
+| Role action or output protocol is unstable| LoRA role adaptation; consider DPO if you have reliable preferences| Ordinary post-training on the same data is sufficient, and there is no gain in the LLM selection tool|
+| The two types of updates harm each other after being combined| Task Arithmetic; TIES symbol conflict handling| Impairment comes from cue/training data differences, non-parametric conflicts|
+| The specific failure is related to an internal component| Layer ablation, paired activation patching| Intervention destroys general language ability, or just outliers|
+| Redundant occupied storage/computing| Wanda、LLM-Pruner、ShortGPT、SVD-LLM | Sparse zero values ​​or low rank representations do not translate into actual operational gains|
+| The role's capabilities are damaged after the cut| SparseGPT local compensation; LLM-Pruner style LoRA recovery| Only the calibration reconstruction error is reduced, the complete work results are not improved|
 
-出处：[LoRA](https://arxiv.org/abs/2106.09685)、[DPO](https://arxiv.org/abs/2305.18290)、[Task Arithmetic](https://arxiv.org/abs/2212.04089)、[TIES](https://arxiv.org/abs/2306.01708)、[activation patching](https://arxiv.org/abs/2309.16042)、[Wanda](https://arxiv.org/abs/2306.11695)、[LLM-Pruner](https://arxiv.org/abs/2305.11627)、[ShortGPT](https://arxiv.org/abs/2403.03853)、[SVD-LLM](https://arxiv.org/abs/2403.07378)、[SparseGPT](https://arxiv.org/abs/2301.00774v3)。这些出处分别支持工具的算法动机，不支持“它们在上述专业系统已有效”的结论。
+Source: [LoRA](https://arxiv.org/abs/2106.09685), [DPO](https://arxiv.org/abs/2305.18290), [Task Arithmetic](https://arxiv.org/abs/2212.04089), [TIES](https://arxiv.org/abs/2306.01708), [activation patching](https://arxiv.org/abs/2309.16042),[Wanda](https://arxiv.org/abs/2306.11695),[LLM-Pruner](https://arxiv.org/abs/2305.11627),[ShortGPT](https://arxiv.org/abs/2403.03853),[SVD-LLM](https://arxiv.org/abs/2403.07378),[SparseGPT](https://arxiv.org/abs/2301.00774v3). These sources respectively support the algorithmic motivation of the tools and do not support the conclusion that they are already effective in the above-mentioned professional systems.
 
-## 实验C：角色抽取与效率
+## Experiment C: Role Extraction and Efficiency
 
-角色专用模型先从4B同基座＋角色delta开始，压缩比与性能变化另画前沿。需要区分：只保存多个小delta节约磁盘；共享基座并切换角色节约驻留权重；结构变小或适用稀疏内核才可能直接减少算力。三者不能统一称“模型已加速”。
+The role-specific model starts with the 4B base + role delta, and the compression ratio and performance changes are drawn separately. It is necessary to distinguish: only save multiple small deltas to save disk; share the base and switch roles to save resident weight; only by making the structure smaller or applying sparse kernels can the computing power be directly reduced. The three cannot be collectively called "the model has been accelerated".
 
-按全工作流报告：官方质量、关键约束all-pass、事实／数字／引用错误、失败步骤、生成tokens、工具耗时、模型时间、端到端延迟、峰值显存、磁盘与离线构造成本。低于预先指定质量下限的压缩变体不计入有效效率提升。预算不足或性能下降也是应交付的结果。
+Report by full workflow: official quality, key constraints all-pass, fact/number/citation errors, failed steps, generated tokens, tool time, model time, end-to-end latency, peak memory, disk and offline construction costs. Compression variants below a pre-specified lower quality limit do not count towards effective efficiency gains. Insufficient budget or performance degradation are also expected deliverables.
 
-第一阶段交付工具和方法卡；第二阶段交付0.6B单工具／组合／程序设计者分析；第三阶段交付工作流适配器、协作对照、角色替换矩阵、质量成本前沿与可重放角色模型程序。专业工作流采用可复核的数值／文件检查优先；需要LLM裁判时保留rubric版本、裁判配置、重复判分分歧及专家抽查。
+The first phase delivers tools and method cards; the second phase delivers 0.6B single tool/combination/programmer analysis; the third phase delivers workflow adapters, collaboration controls, role replacement matrices, quality cost frontiers and replayable role model programs. The professional workflow adopts reviewable numerical values/document inspection priority; when LLM refereeing is required, the rubric version, referee configuration, repeated scoring differences and expert spot checks are retained.

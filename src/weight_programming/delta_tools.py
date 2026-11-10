@@ -1,4 +1,4 @@
-"""在已登记的权重坐标上分析与压缩模型更新。"""
+"""Analyze and compress model updates on registered weight coordinates."""
 
 import json
 import math
@@ -15,7 +15,7 @@ from .tensor_store import sha
 
 
 class DeltaTools:
-    """复用候选分支和已有的低秩更新代数。"""
+    """Reuse candidate branches and existing low-rank update algebra."""
 
     def __init__(self, versions, artifacts, input_rows, backend):
         self.versions = versions
@@ -28,7 +28,7 @@ class DeltaTools:
 
     @torch.no_grad()
     def import_peft_adapter(self, parent_variant_id, adapter_dir):
-        """由宿主导入原生线性 LoRA，沿用 PEFT 的缩放和转置语义。"""
+        """Import native linear LoRA from the host, preserving PEFT scaling and transpose semantics."""
         from peft import LoraConfig, PeftConfig, PeftModel
         from peft.tuners.lora.layer import Linear, LoraLayer
         from peft.utils import get_peft_model_state_dict, load_peft_weights
@@ -41,7 +41,7 @@ class DeltaTools:
                 or config.layer_replication or config.target_parameters or config.trainable_token_indices
                 or config.lora_bias):
             raise ValueError("Native import requires linear LoRA without extra base-weight or bias changes")
-        # 独立实例加载指定父版本，导入不会改变正在使用的模型。
+        # Independent instances load the specified parent version, and the import does not change the model being used.
         base = load_variant(self.backend, self.versions, parent_variant_id, dtype=torch.float32)
         adapter = PeftModel.from_pretrained(base, folder, config=config, local_files_only=True).eval()
         saved = load_peft_weights(folder, device="cpu", local_files_only=True)
@@ -99,7 +99,7 @@ class DeltaTools:
             raise ValueError("Update and requested parent variant differ")
         if meta["base_id"] != _digest(meta["base_files"]):
             raise ValueError("Invalid update base fingerprint")
-        # 旧适配器可能记录更宽的文件集，逐项验证并要求包含全部权重分片。
+        # Older adapters may record a broader file set; verify each file and require all weight shards.
         source = self.versions.store
         weight_files = {source._source_path(name).name for name in source.names}
         if not weight_files.issubset(meta["base_files"]):
@@ -129,7 +129,7 @@ class DeltaTools:
     def analyze_weight_delta(self, base_variant_id, variant_id=None, adapter_id=None, tensors=None,
                              other_variant_id=None, direction_rank=0, input_artifacts=None,
                              direction_solver="exact", direction_seed=11, direction_iterations=4):
-        """返回原精度差分、更新方向及可选的局部输出变化。"""
+        """Return the difference at original precision, update direction, and optional local output changes."""
         self.versions.variant(base_variant_id)
         if (variant_id is None) == (adapter_id is None):
             raise ValueError("Choose exactly one candidate variant or registered update")
@@ -187,7 +187,7 @@ class DeltaTools:
                 elif direction_solver == "randomized":
                     if delta.numel() > 32_000_000:
                         raise ValueError("Randomized direction analysis accepts at most 32M selected matrix values")
-                    # 使用 PyTorch 的随机低秩分解，固定种子并限制子空间迭代次数。
+                    # Stochastic low-rank decomposition using PyTorch, fixed seed and limited number of subspace iterations.
                     with torch.random.fork_rng(devices=[]):
                         torch.manual_seed(direction_seed)
                         u, s, v = torch.svd_lowrank(delta, q=min(direction_rank + 8, min(delta.shape)),
@@ -227,7 +227,7 @@ class DeltaTools:
         return torch.linalg.svd(delta, full_matrices=False)
 
     def publish_update(self, pairs, method, provenance, native_adapter=None, method_provenance=None):
-        """统一发布低秩因子，训练时可同时保留原生 PEFT 文件。"""
+        """Low-rank factors are published uniformly, and native PEFT files can be retained during training."""
         from delta_programming import emit
 
         source = self.versions.store
@@ -249,7 +249,7 @@ class DeltaTools:
     @torch.no_grad()
     def compress_update(self, parent_variant_id, rank, method="truncated_svd", patch_id=None, adapter_id=None,
                         input_artifacts=None, materialize=False):
-        """压缩已有更新，记录误差并按需生成密集补丁。"""
+        """Compress an existing update, record its error, and optionally generate a dense patch."""
         from delta_programming import norm, residual, truncate, weighted_truncate
 
         self.versions.variant(parent_variant_id)

@@ -1,57 +1,61 @@
-# 项目维护与目录说明
+# Project maintenance and directories
 
-项目根目录是唯一的 Git 工作区。工具开发、文档修改和源码提交都从这里完成。
+The project root is the sole Git working tree. Tool development, documentation changes, and source commits are maintained here.
 
-## 目录
+## Directories
 
-| 路径 | 用途 |
+| Path | Purpose |
 |---|---|
-| `README.md`、`README.zh-CN.md` | 对外介绍与使用入口 |
-| `PROJECT_STATUS.md` | 当前进度与接手入口 |
-| `src/weight_programming/` | 通用模型编程工具库 |
-| `src/*.py` | 已有实验执行器和辅助模块，保留运行路径 |
-| `examples/` | 各组工具的真实模型示例 |
-| `tests/` | 已有检查 |
-| `contracts/` | 方法配置与执行约定 |
-| `vendor/` | 保留来源和许可证的第三方代码 |
-| `docs/` | 安装、工具设计、接口、方法目录与公开结果 |
-| `research/methods/` | 文献依据和方法语义 |
-| `research/protocols/` | 实验协议与研究对照 |
-| `research/reports/` | 已有实验的分析报告与发布记录 |
-| `research/acquisition/` | 数据获取脚本 |
-| `research/environments/` | 实验环境定义 |
-| `research/validation/` | 与参考实现的数值核对脚本 |
-| `tools/` | 源码导出等维护工具 |
-| `artifacts/`、`benchmarks/` | 本地实验结果、验证记录、安装包和数据 |
-| `handoff/` | 本地按日期保存的实验交接与作业快照 |
-| `archive/` | 本地旧计划、旧进度、旧首页、旧发布副本 |
-| `assets/illustrations/` | 本地插图素材 |
+| `README.md` | Public introduction and entry point |
+| `PROJECT_STATUS.md` | Current progress and handoff entry points |
+| `src/weight_programming/` | General-purpose model programming toolkit |
+| `src/*.py` | Existing experiment executors and helpers, retaining their execution paths |
+| `examples/` | Real-model examples for each group of tools |
+| `tests/` | Existing checks |
+| `contracts/` | Method configuration and execution conventions |
+| `vendor/` | Third-party code with provenance and licenses |
+| `docs/` | Installation, tool design, interfaces, method catalog, and public results |
+| `research/methods/` | Literature and method semantics |
+| `research/protocols/` | Experiment protocols and research controls |
+| `research/reports/` | Analyses of completed experiments and release records |
+| `research/acquisition/` | Data acquisition scripts |
+| `research/environments/` | Experiment environment definitions |
+| `research/validation/` | Numerical checks against reference implementations |
+| `tools/` | Maintenance tools, including source export |
+| `artifacts/`, `benchmarks/` | Local experiment results, validation records, packages, and data |
+| `handoff/` | Local dated experiment handoffs and job snapshots |
+| `archive/` | Local historical plans, progress records, homepages, and releases |
+| `assets/illustrations/` | Local illustration assets |
 
-## 常用入口
+## Entry points
 
-- 使用工具：[安装与调用](mcp-tools.md)、[上手指南](getting-started.md)。
-- 查看实现：[工具清单](tool-inventory.md)、[机器可读目录](tool-catalog.json)。
-- 继续研究：[研究索引](../research/README.md)、[三阶段路线](../research/roadmap.md)。
-- 查看当前进度：[项目状态](../PROJECT_STATUS.md)。
+- Use the tools: [installation and invocation](mcp-tools.md), [getting started](getting-started.md).
+- Inspect the implementation: [tool inventory](tool-inventory.md), [machine-readable catalog](tool-catalog.json).
+- Continue research: [research index](../research/README.md), [three-stage roadmap](../research/roadmap.md).
+- Check progress: [project status](../PROJECT_STATUS.md).
 
-## 导出源码
+## Exporting source
 
-`tools/export_source.py` 从指定 Git 提交导出源码包。默认导出 `HEAD`，也可以传完整提交号。它读取 Git 中保存的版本，本地未提交的修改和实验数据保留在工作区。
+`tools/export_source.py` exports a source package from a specified Git commit. It exports `HEAD` by default and also accepts a full commit hash. It reads the version stored in Git; uncommitted local changes and experiment data remain in the working tree.
 
 ```sh
 python tools/export_source.py --output dist/WSP-toolkit-source.tar.gz
 ```
 
-源码包旁会保存同名 `.tar.gz.json` 文件，记录提交号、文件数量和 SHA256（文件内容校验摘要）。已有输出文件会使命令停止，避免覆盖旧发布包。
+A corresponding `.tar.gz.json` file records the commit, file count, and SHA256 content digest. The command stops if the output already exists, avoiding overwriting an earlier release.
 
-`SOURCE_MANIFEST.json` 记录源码文件的摘要，清单自身除外。准备发布时，先暂存本次要发布的文件，用 `--update-manifest` 更新清单，再把清单一起暂存和提交。暂存区是 Git 保存本次提交内容的位置；未暂存的实验修改会保留在工作区。
+`SOURCE_MANIFEST.json` records digests of the source files, excluding the manifest itself. To prepare a release, stage the files to release, update the manifest with `--update-manifest`, then stage and commit the manifest as well. Unstaged experiment changes remain in the working tree.
 
 ```sh
 python tools/export_source.py --update-manifest
 ```
 
-## 实验资料
+## Experiment material
 
-实验执行器仍使用原来的 `src/` 路径。模型、数据、已冻结的实验配置和原始输出保持原位置，便于重放。
+Experiment executors retain their existing `src/` paths. Models, data, frozen experiment configurations, and raw outputs remain in their original locations for replay.
 
-本机的既有作业收尾工具位于 `tools/operations/closeout.py`，记录仍写入原来的 `handoff/2026-11-07/`。远程实验另按原协议管理资源，GPU 作业只使用 GPU 0。
+The existing local job closeout tool is `tools/operations/closeout.py`; records continue to be written to `handoff/2026-11-07/`. Remote experiment resources are managed under their existing protocols, and GPU jobs use GPU 0 only.
+
+## Language for contributions
+
+Maintain public documentation, comments and docstrings, and human-facing tool and CLI descriptions in English. Preserve multilingual dataset and tokenization examples where their original language is part of the example.

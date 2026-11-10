@@ -1,44 +1,44 @@
-# 同系列、跨系列与容量控制的统计口径
+# Statistical conventions for same-family, cross-family, and capacity comparisons
 
-日期：2026-11-06。在主矩阵尚未完成、没有跨模型结果时确定。此前已见Qwen0.6首种子与两小模型原始基线，不是追溯性预注册。
+Date: 2026-11-06. This protocol was defined before the main matrix was complete and before cross-model results were available. The first Qwen0.6 seed and the base-model baselines for the two small models had already been observed. It is not a prospective preregistration.
 
-## 研究量与对照
+## Study quantities and comparisons
 
-对任务t、模型m、方法p、训练种子s、同一官方测试题i，记二元得分为Y(m,p,s,i)，原模型得分为B(m,i)。首先计算逐题增量D=Y−B，报告各种子准确率、平均绝对增量及不确定性。主指标沿用完整GSM8K flexible EM；ARC-C和HellaSwag使用acc_norm。主分析用绝对百分点，不用相对增长掩盖低原始水平。
+For task t, model m, method p, training seed s, and official test question i, let Y(m,p,s,i) be the binary score and B(m,i) the base-model score. Calculate the paired per-question change D=Y−B, and report accuracy for each seed, the mean absolute gain in percentage points, and uncertainty. The main metric remains flexible exact match on the full GSM8K set; ARC-C and HellaSwag use acc_norm. Absolute percentage-point changes are the main analysis, so a low baseline is not obscured by relative growth.
 
-方法包括标准LoRA、固定全局网格、random、greedy、BO和LLM。C1固定rank8；C2保持约0.2%可训练参数，目前仅标准LoRA，不能写成C2控制了全部搜索策略。Qwen0.6的C2与C1同rank8，复用同一运行，不能记作额外独立重复。
+Methods include standard LoRA, a fixed global grid, random, greedy, BO, and LLM. C1 fixes rank at 8; C2 keeps trainable parameters at approximately 0.2%. C2 currently covers standard LoRA only and does not control the capacity of every search strategy. For Qwen0.6, C2 and C1 both use rank 8 and reuse the same run; they are not independent repetitions.
 
-每种方法分别比较：
+Compare each method separately:
 
-1. Qwen0.6与Qwen1.7、Smol360与Smol1.7：同系列规模差异。
-2. Qwen1.7与Smol1.7：不同系列、接近参数量。
-3. 其他跨系列组合：系列与规模共同变化，单独标记。
-4. 同一模型C2−C1标准LoRA：相同种子／数据顺序配对的容量对照。
+1. Qwen0.6 versus Qwen1.7, and Smol360 versus Smol1.7: scale differences within a model family.
+2. Qwen1.7 versus Smol1.7: different families with similar parameter counts.
+3. Other cross-family pairs: family and scale both vary, so label them separately.
+4. C2−C1 for standard LoRA within the same model: a capacity comparison paired by seed and data order.
 
-两模型的趋势对比定义为平均增量之差，而不是原始准确率之差。另报告平均增量是否同号以及各种子的增量，不将“同号”当作等效或统计相似性证明。没有事先定义可接受相似性界限，故当前不执行等效检验。
+Define a cross-model trend difference as the difference in mean gains, not the difference in raw accuracy. Also report whether mean gains have the same sign and the individual seed gains. A common sign alone does not establish equivalence or statistical similarity. No acceptable equivalence margin was specified in advance, so equivalence testing is not performed.
 
-## 重采样与范围
+## Resampling and Range
 
-模型内先抽取3个种子行（有放回），再对官方题目列有放回抽样，计算平均D。跨模型时两侧种子独立抽取，题目列使用同一抽样，以保留共同题目难度。数字相同的训练种子不意味着不同架构具有配对的随机噪声；直接配对跨模型种子可能低估不确定性。C2−C1则在同一模型和同一种子内先作差，再重采样。
+Within a model, sample three seed rows with replacement, then sample official question columns with replacement and calculate mean D. For cross-model comparisons, sample seeds independently on the two sides while using the same sampled question columns to preserve question pairing. The same numerical seed does not imply paired training noise across architectures; pairing such seeds could underestimate uncertainty. For C2−C1, take the within-model, within-seed difference first, then resample.
 
-固定2000次、随机种子20261106，报告百分位95%区间。3个训练种子只能粗略刻画训练变异；不调整的多个区间属于描述性分析，不作为批量显著性宣称。单种子输出明确标为不涵盖可靠种子变异，跨模型正式对比要求两侧均具备11、22、33三个种子。模型／系列数太少，不能外推到模型总体，更不能从差分中识别架构因果效应。
+Use 2,000 bootstrap repetitions and random seed 20261106, and report percentile 95% intervals. Three training seeds describe training variation only roughly. Multiple unadjusted intervals are descriptive, not a claim of family-wide statistical significance. A single-seed result must be labeled as unable to characterize seed variation reliably. A formal cross-model comparison requires seeds 11, 22, and 33 on both sides. The small number of models and families cannot support inference to a population of models or attribute differences causally to architecture.
 
-先前单运行结果中的5000次逐题bootstrap保留，不与本协议混为同一种不确定性估计。工具级代理风险曲线与实际生成准确率分别分析，不从低NLL推导准确率提升。
+Keep the 5,000 per-question bootstraps from previous single runs separate from this protocol's uncertainty estimate. Analyze the tool-level proxy risk curve and actual generation accuracy separately; lower NLL alone does not establish an accuracy gain.
 
-## 可执行检查
+## Executable checks
 
-`src/analyze_model_trends.py`读取正式`evaluation-index.json`及可选C2 index，核对完整官方doc_id、逐题分数汇总、样本内容hash、模型名称及记录的权重／tokenizer指纹、统一batch、harness／运行时、runner与helper源码快照。它不重新加载并哈希数GB原始模型，也不复现GPU执行；来源审计和实际推理仍是独立证据。
+`src/analyze_model_trends.py` reads the official `evaluation-index.json` and optional C2 index. It checks complete official doc_ids, per-question score summaries, sample content hashes, model names, recorded weight and tokenizer fingerprints, consistent batch settings, harness/runtime, and snapshots of runner and helper source code. It does not reload and hash the multi-gigabyte base model or reproduce GPU execution. Source audits and actual inference provide separate evidence.
 
-输出缺失条件及缺失种子，不能用已有行数暗示完整矩阵完成。冒烟、旧batch8生成与正式batch32混合、模型错标或不同执行快照均被拒绝。相同状态复用会保留原来源，不伪造额外耗时或重复。
+The output identifies missing conditions and seeds; existing rows cannot be presented as a complete matrix. Smoke results, old batch8 generation mixed with official batch32, mislabeled models, and differing execution snapshots are rejected. Reused parameter states retain their original provenance without inventing additional timing or independent repetitions.
 
-当前实际部分运行已通过，得到Qwen0.6标准LoRA与固定0.8两配置的六个任务摘要，尚无具备三种子的跨模型对比。四项统计检查覆盖种子方差保留、共同题目配对、跨模型种子独立抽样及单种子限制；另有错标模型和旧生成batch拒绝检查。这只是分析实现验证，不是经验趋势结论。
+The partial run passed and produced six task summaries for Qwen0.6 standard LoRA and fixed 0.8 configurations. No three-seed cross-model comparison is available. Four statistical checks cover preservation of seed variation, common-question pairing, independent seed sampling across models, and the single-seed restriction; additional checks reject mislabeled models and old generation batches. These checks validate the analysis, not an empirical trend conclusion.
 
 ```sh
 .venv/bin/python src/analyze_model_trends.py \
   --index benchmarks/confirm-v2/evaluation-index.json \
   --output research/model-trends-partial.json
 
-# 两矩阵全部完成后，读取固定rank与相对容量两套证据：
+# Once both matrices are complete, read the fixed-rank and relative-capacity evidence:
 .venv/bin/python src/analyze_model_trends.py \
   --index benchmarks/confirm-v2/evaluation-index.json \
   --capacity-index benchmarks/capacity-confirm-v2/evaluation-index.json \

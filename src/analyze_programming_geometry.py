@@ -40,7 +40,7 @@ def main():
     p=argparse.ArgumentParser();p.add_argument('--root',type=Path,required=True);p.add_argument('--output',type=Path,required=True)
     a=p.parse_args();result=summarize(a.root);a.output.parent.mkdir(parents=True,exist_ok=True)
     a.output.write_text(json.dumps(result,indent=2))
-    print('| 模型 | 种子间余弦 | 原方向前4能量 | 后1/4层能量 | soup→r8能量 | soup→r4能量 | r4因子MiB |')
+    print('| Model | Cross-seed cosine | Source top-4 energy | Final-quarter layer energy | Soup to r8 energy | Soup to r4 energy | r4 factors MiB |')
     print('|---|---:|---:|---:|---:|---:|---:|')
     for r in result['models']:
         c=r['compressed'];print(f"| {r['model']} | {r['mean_cosine']:.3f} | {r['source_top4_energy_mean']:.2%} | {r['last_quarter_energy_mean']:.2%} | {c['frobenius-r8']['retained_weight_energy']:.2%} | {c['frobenius-r4']['retained_weight_energy']:.2%} | {c['frobenius-r4']['factor_mib']:.3f} |")

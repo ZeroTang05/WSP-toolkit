@@ -1,4 +1,4 @@
-"""用真实 GSM8K 样本演示模型层级读出和线性探针。"""
+"""Demonstration of model-level readout and linear probes with real GSM8K samples."""
 
 import argparse
 import asyncio

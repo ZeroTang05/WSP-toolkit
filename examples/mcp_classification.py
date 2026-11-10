@@ -1,4 +1,4 @@
-"""用真实 SST-2 样本验证分类分数、编码器快照、探针与权重补丁。"""
+"""Validate classification scores, encoder snapshots, probes, and weight patches with real SST-2 samples."""
 
 import argparse
 import asyncio
@@ -15,7 +15,7 @@ from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
 
 async def main(model, dataset, comparison_model=None):
-    """同一组工具读取真实分类器，并与 Transformers 直接推理逐项核对。"""
+    """Use the same tools on a real classifier and compare each result with direct Transformers inference."""
     groups = {0: [], 1: []}
     with dataset.open(encoding="utf-8") as stream:
         for line in stream:

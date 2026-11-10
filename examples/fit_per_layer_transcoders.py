@@ -1,4 +1,4 @@
-"""用真实前馈输入和输出拟合一组小型 Circuit Tracer 字典。"""
+"""Fit a set of small Circuit Tracer dictionaries with real feedforward inputs and outputs."""
 
 import argparse
 from contextlib import ExitStack
@@ -14,7 +14,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 
 def fit(model_path, dataset_path, destination, variant_id):
-    """为示例保存一层一份的稀疏预测器和模型绑定清单。"""
+    """Save one sparse predictor per layer and a model-binding manifest for the example."""
     torch.manual_seed(14)
     model = AutoModelForCausalLM.from_pretrained(model_path, local_files_only=True, dtype=torch.float32).eval()
     tokenizer = AutoTokenizer.from_pretrained(model_path, local_files_only=True)
@@ -48,7 +48,7 @@ def fit(model_path, dataset_path, destination, variant_id):
             transcoder.b_dec.copy_(y.mean(0))
         scale = (y - transcoder.b_dec.detach()).square().mean().clamp_min(1e-12)
         optimizer = torch.optim.Adam(transcoder.parameters(), lr=0.003)
-        # 重建真实 MLP 输出，同时鼓励只有少量特征发出信号。
+        # Reconstruct the true MLP output while encouraging only a small number of features to signal.
         for _ in range(60):
             pick = torch.randint(len(x), (min(128, len(x)),))
             features = transcoder.encode(x[pick])

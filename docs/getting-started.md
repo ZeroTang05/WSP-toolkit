@@ -1,6 +1,6 @@
-# Getting started · 上手指南
+# Getting started
 
-中文读者可以先在本地准备一个 safetensors 格式的模型文件夹。安装工具包后，用第 2 节的命令读取一块权重。命令里的 `/path/to/Qwen3-0.6B` 换成你的模型目录，`./weight-edits` 用来保存修改记录。只读取权重时，普通电脑的 CPU（处理器）即可运行。
+Prepare a local model directory in Safetensors format. After installing the toolkit, use the command in section 2 to read a weight slice. Replace `/path/to/Qwen3-0.6B` with your model directory; `./weight-edits` stores edit records. A typical computer CPU can read weights.
 
 ## 1. Install the toolkit
 

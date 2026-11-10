@@ -6,7 +6,7 @@ import torch
 
 
 def block_influence(before, after):
-    """返回每个词元的 ShortGPT 层影响分数。"""
+    """Return the ShortGPT block influence score for each token."""
     return 1 - torch.nn.functional.cosine_similarity(before.float(), after.float(), dim=-1)
 
 

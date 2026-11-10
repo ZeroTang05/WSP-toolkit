@@ -1,4 +1,4 @@
-"""在真实检查点上执行 ROME、MEMIT，再读取修改前后的回答分差。"""
+"""Execute ROME and MEMIT on the real checkpoint, and then read the answer score difference before and after the modification."""
 
 import argparse
 import asyncio
@@ -13,7 +13,7 @@ from mcp.client.stdio import stdio_client
 
 
 async def main(model, dataset, editor_python, editor_source):
-    """用两条反事实检查直接问题、改写和邻近事实。"""
+    """Check direct questions, paraphrases, and adjacent facts with two counterfactuals."""
     with dataset.open(encoding="utf-8") as stream:
         calibration = [json.loads(line)["problem"] for line in islice(stream, 12)]
     facts = [{"subject": "Eiffel Tower", "prompt": "The {} is located in", "target_true": "Paris", "target_new": "Rome"},

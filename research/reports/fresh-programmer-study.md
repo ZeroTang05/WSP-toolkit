@@ -1,47 +1,47 @@
-# 独立模型程序设计者：实际驱动与首个提交实验
+# Independent Model Programmer: Practical Drivers and First Commit Experiments
 
-本文保留成文时的实验设置、结果与状态。当前项目进度见[项目状态](../../PROJECT_STATUS.md)。
+This report preserves the experimental settings, results, and status at the time of writing. For the current project progress, see [Project Status](../../PROJECT_STATUS.md).
 
-2026-11-07。新增可执行模型驱动，而不再只提供工具schema。首次提交实验仍在等待GPU；本文件不报告参数编辑或数学成绩。
+2026-11-07. An executable model driver has been added alongside the tool schemas. The first submitted experiment is still waiting for the GPU; parameter edits or math scores are not reported in this file.
 
-## 新增内容
+## New content
 
-`src/weight_programming/programmer.py`将独立模型回调连接到真实`ProgrammingSession`：
+`src/weight_programming/programmer.py` connects the independent model callback to the real `ProgrammingSession`:
 
-- 新建system／user上下文，只加入本实验工具响应。
-- 接收CPU代码、前向请求、最终报告三种明确输出。
-- 记录实际输入输出tokens、代码执行数、前向账本和完整响应。
-- 上下文达到上限时保留同一内核、当前编辑、预算及程序设计者自己的notes，不加载研究会话。
-- 在最终记录中保存当前native精度张量哈希与变体身份；不将完成程序等同于获得能力收益。
-- 显式配置是否要求用完前向预算；本次原作式实验要求50次成功请求后才能最终提交。
+- Create a new system/user context and add only this experiment’s tool responses.
+- Accept three explicit output types: CPU code, a forward request, and a final report.
+- Record actual input and output tokens, code execution count, the forward ledger, and complete responses.
+- When the context reaches the upper limit, the same kernel, current edits, budget, and programmer’s own notes are retained, and the research session is not loaded.
+- Save the current native-precision tensor hash and variant identity in the final record; do not treat completion of a program as evidence of a capability gain.
+- Explicitly configure whether the forward budget must be exhausted; this original-style experiment requires 50 successful requests before final submission.
 
-`src/run_weight_programmer.py`是真实本地模型回调。它冻结模型文件哈希、工具源码、环境、初始提示和练习数据manifest，再排队GPU；没有将作者编辑报告或当前会话结论放入提示。
+`src/run_weight_programmer.py` is the real local model callback. It freezes model file hashes, tool source code, environments, initial prompts, and exercise data manifests before queuing them to the GPU; it does not put author edit reports or current session conclusions into prompts.
 
-观测导出改为控制器持有、内核只读挂载，避免工作目录内路径重定向和原始观测修改。完整使用说明见[公开接口文档](../../docs/model-programmer.md)。
+The controller now holds observation exports and mounts them read-only in the kernel, preventing working-directory path redirection and modification of the original observations. For complete instructions, see [public interface document](../../docs/model-programmer.md).
 
-## 实际验证范围
+## Actual verification scope
 
-远端作业`job-mw5lq07b-bf8b`退出0，5项检查通过。使用真实Linux隔离内核、小型Qwen3及前向服务，覆盖坐标编辑传递、数组读取、上下文延续、过早提交拒绝、服务失败记录和只读导出。模型回调在这些检查中是脚本化输入，不是模型性能实验。
+Remote job `job-mw5lq07b-bf8b` exited 0 and passed 5 checks. Using a real Linux isolation kernel, a small Qwen3, and the forward service, the checks covered coordinate-edit transfer, array reading, context continuation, rejection of premature submissions, service-failure logging, and read-only exports. Model callbacks are scripted inputs in these checks, not model performance experiments.
 
-原作CPU数值工具环境已在独立`.venv-wsp`补齐并实际导入：SciPy 1.15.3、scikit-learn 1.7.2、pandas 2.3.3、SymPy 1.13.1、NetworkX 3.4.2。未升级共享训练环境。
+The original CPU numerical-tool environment was completed and its packages imported in the separate `.venv-wsp`: SciPy 1.15.3, scikit-learn 1.7.2, pandas 2.3.3, SymPy 1.13.1, NetworkX 3.4.2. The shared training environment has not been upgraded.
 
-## 首个实际模型实验
+## First practical model experiment
 
-- 作业：`job-mw5ltbbd-76df`，最新核查running，输出已确认`waiting_gpu_0`。
-- 目标：原作revision的Qwen3.5-0.8B。
-- 程序设计者：独立加载Qwen3-4B-Instruct-2507，greedy、非thinking；它不是作者原程序设计者。
-- 练习：原作15,458个授权练习，哈希／数量核对；无参考编辑和最终评测输入。
-- 权限：300 CPU执行、50成功前向；目标生成上限32,768 tokens，thinking及采样遵循当前冻结策略。
-- 程序设计者限制：500回复、每次最多8,192 tokens、32,768上下文，允许自有笔记延续。
-- 执行：独立Transformers 5.3.0／Torch 2.5.1、BF16／SDPA、GPU 0锁。
-- 输出：远端`benchmarks/weight-programmer-v1/Qwen3.5-0.8B-qwen4b-seed401`；本地已保存冻结protocol，尚无完成记录。
+- Job: `job-mw5ltbbd-76df`, running at the latest check, with output `waiting_gpu_0`.
+- Target: Qwen3.5-0.8B at the revision used in the original work.
+- Programmer: Qwen3-4B-Instruct-2507 loaded independently with greedy decoding and non-thinking mode; it is not the authors’ original programmer model.
+- Exercises: the original 15,458 authorized exercises, checked by hash and count; reference edits and final evaluation inputs are excluded.
+- Permissions: 300 CPU executions and 50 successful forward requests; target generation limit is 32,768 tokens, thinking and sampling follow the current freezing policy.
+- Programmer limits: 500 replies, maximum 8,192 tokens per time, a 32,768-token context, continuation using its own notes is allowed.
+- Execution: Standalone Transformers 5.3.0/Torch 2.5.1, BF16/SDPA, GPU 0 lock.
+- Output: Remote `benchmarks/weight-programmer-v1/Qwen3.5-0.8B-qwen4b-seed401`; the frozen protocol has been saved locally and there is no completion record yet.
 
-这是新模型上下文中的参数程序实验；HF后端、程序设计者模型与驱动和原作存在差异，不能称已完全复现。预训练是否见过作者材料未知；本实验只主张运行输入隔离，不主张证明预训练无污染。
+This parameter-programming experiment uses a new model context. Its HF backend, programmer model, and driver differ from the original work, so it cannot be called a complete reproduction. It is unknown whether the pre-training has seen the author's materials; this experiment establishes isolation of runtime inputs and does not establish that pretraining is free of contamination.
 
-## 下一步研究分析
+## Next step research and analysis
 
-完成后先审阅实际程序轨迹、失败类型与权限；冻结最终编辑，再进行独立完整数学评测。若发生收益，报告逐题改善／退化、循环／截断、长度及保护能力，不能以结束更快替代正确率。
+Upon completion, review the actual program trace, failure types, and permissions; freeze final edits before conducting an independent complete mathematical evaluation. If a gain occurs, report per-question improvements and degradations, looping and truncation, length, and retained abilities. Faster completion does not replace accuracy.
 
-完整效果达到预先定义的匹配标准后，再比较作者与本实验编辑的支持位置、同坐标带符号方向、子空间、共同输入上的功能变化、剂量及反向／随机对照。当前没有编辑，不能提前声称方向相同或不同。
+If the complete results meet the predefined matching criteria, compare the authors’ reference edits and this experiment’s edits by affected sites, coordinate-wise signs, subspaces, functional changes on common inputs, dose, and reverse/randomized controls. No edits are complete yet, so their direction cannot be characterized in advance as the same or different.
 
-4B办公任务`job-mw5jt7i0-e7ef`仍在CPU执行；本轮核查已有12个实际动作和25次模型调用，尚无single／collaborate完成比较。保持该作业继续运行。
+The 4B office task `job-mw5jt7i0-e7ef` is still executing on the CPU; this round of verification has 12 actual actions and 25 model calls, and neither the single-agent nor collaborative comparison has finished. Keep the job running.

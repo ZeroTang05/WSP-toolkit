@@ -1,32 +1,32 @@
-# 完整MATH-500：宿主端评测与原模型基线
+# Complete MATH-500: Host-side evaluation and base model baseline
 
-本文保留成文时的实验设置、结果与状态。当前项目进度见[项目状态](../../PROJECT_STATUS.md)。
+This report preserves the experimental settings, results, and status at the time of writing. For the current project progress, see [Project Status](../../PROJECT_STATUS.md).
 
-2026-11-07。完整原模型评测已提交，最新确认running、等待GPU0第一题。没有数学成绩或循环改善结论。
+2026-11-07. The full base-model evaluation has been submitted. At the latest check it was running and waiting for GPU0 to start the first question. No conclusions about math performance or loop reduction are available yet.
 
-## 数据与隔离
+## Data and Isolation
 
-从[官方HuggingFaceH4/MATH-500](https://huggingface.co/datasets/HuggingFaceH4/MATH-500)固定revision `6e4ed1a2a79af7d8630a6b768ec859cb5af4d3be`取得完整test.jsonl、dataset card和eval.yaml，保留500个官方unique_id、原始问题与答案。源文件逐项SHA256保存在`benchmarks/math500-evaluation-v1/manifest.json`。
+The complete test.jsonl, dataset card, and eval.yaml were obtained from the [official HuggingFaceH4/MATH-500 dataset](https://huggingface.co/datasets/HuggingFaceH4/MATH-500) at revision `6e4ed1a2a79af7d8630a6b768ec859cb5af4d3be`. The 500 official unique_id values, original questions, and answers are retained. Individual source-file SHA256 hashes are recorded in `benchmarks/math500-evaluation-v1/manifest.json`.
 
-与15,458个原作练习做空白归一化后的精确问题文本比较，重合0项。该检查不覆盖语义近重复、预训练污染或更广泛的题目谱系。证据为`artifacts/toolkit/math500-evaluation-v1/practice-overlap.json`。
+After whitespace normalization, exact question-text comparison with the 15,458 original exercises found 0 overlaps. This check does not cover semantic near-duplication, pre-training contamination, or the broader question spectrum. The evidence is `artifacts/toolkit/math500-evaluation-v1/practice-overlap.json`.
 
-测试集与练习树分开保存，未加入`PracticeSet`，未挂载进程序设计者内核。新`weight_programming.evaluation.evaluate_math`仅在宿主端接收显式test／evaluation标记；生成输入由problem单独构造，answer由宿主评分器使用，reference solution不进入生成项。
+The test set is stored separately from the exercise tree, is not added to `PracticeSet`, and is not mounted in the programmer’s kernel. The new `weight_programming.evaluation.evaluate_math` only receives explicit test/evaluation labels on the host side; generation input is constructed from the problem alone, the answer is used by the host scorer, and the reference solution does not enter the generation prompt.
 
-## 执行协议
+## Evaluation protocol
 
-`src/run_math500_evaluation.py`固定完整500题×4样本，共2,000次生成；thinking、32,768上限、T=.6、top-p=.95、top-k=20、presence=1.5。原模型为已核验的原作Qwen3.5-0.8B revision，执行采用独立HF 5.3.0／BF16／SDPA，未安装可选DeltaNet fast path，不能声称vLLM或作者未公开harness等价。
+`src/run_math500_evaluation.py` fixes the evaluation at 500 questions × 4 samples, for 2,000 generations in total. It uses thinking, a 32,768-token limit, T=.6, top-p=.95, top-k=20, and presence=1.5. The base model is the verified Qwen3.5-0.8B revision used in the original work. It runs in a separate HF 5.3.0/BF16/SDPA environment without the optional DeltaNet fast path. Equivalence to vLLM or the authors’ undisclosed harness is not established.
 
-每题四样本期间独占GPU0，结束后模型转回CPU再释放锁。记录排队和驻留成本，避免完整长评测一直占用设备。样本随机种子按固定policy seed、官方题目ID、sample索引生成；原作实际随机流未知。
+Each question holds GPU0 exclusively while its four samples are generated. The model then moves back to the CPU and releases the lock. Queue and residency costs are recorded so a long evaluation does not monopolize the device. Each sample seed is derived from a fixed policy seed, the official question ID, and the sample index; the original work’s random stream is unknown.
 
-结果逐样本写入文本、token IDs、分数、截断、finish reason与声明的循环尾部指标；按题聚合四样本平均正确率及标准误，不用pass@4代替accuracy。完成标记只在所有题目全部成功后写出。部分目录拒绝静默重启。
+For each sample, the output records text, token IDs, scores, truncation, finish reason, and the declared loop-tail indicators. The four-sample average accuracy and its standard error are aggregated by question; pass@4 is not substituted for accuracy. The completion mark is only written after all questions have been successfully completed. Partial directories reject silent restarts.
 
-后续冻结编辑可通过`--replacements`导入native替换张量，复制并校验基座、文件及修改权限。参考重放与独立发现使用不同来源和输出目录；评测结果不得返回独立程序设计者继续选编辑。
+For a later frozen edit, `--replacements` imports native replacement tensors, copies the base model, and verifies the base, files, and edit permissions. Reference replay and independent discovery use different sources and output directories; evaluation results may not be returned to the independent programmer for further editing.
 
-## 真实运行与验证
+## Real operation and verification
 
-- `job-mw5memb5-6af0`：生成路径检查退出0，使用真实小型Qwen3和明确的fixture grader验证流式存储、样本身份与答案不进prompt；不是数学能力分数。
-- `job-mw5mf2op-d59e`：完整原Qwen3.5基线，最新running并输出`waiting_gpu_0, position=1, items=500`，已完成473张量加载与后端核验。
-- 输出目录：远端`benchmarks/math500-full-v1/original`；本地已保存`setup.json`，尚无完成结果。
-- 独立程序设计者仍是`job-mw5ltbbd-76df`；其源码和上下文在新增测试评测工具前已经冻结，没有把这个评测入口提供给它。
+- `job-mw5memb5-6af0`: The generation-path check exited 0. It used a real small Qwen3 and an explicit fixture grader to verify streaming storage, sample identity, and that answers do not enter prompts; it does not measure math ability.
+- `job-mw5mf2op-d59e`: The full original Qwen3.5 baseline was running at the latest check and reported `waiting_gpu_0, position=1, items=500`; loading and backend verification of 473 tensors had completed.
+- Output directory: remote `benchmarks/math500-full-v1/original`; `setup.json` has been saved locally, but there is no completion result yet.
+- The independent programmer is still `job-mw5ltbbd-76df`; its source and context were frozen before the new test and evaluation tool was added, and it was not given access to this evaluation interface.
 
-公开用法见[宿主端评测文档](../../docs/final-evaluation.md)。当前进展补齐了完整评测执行路径，并不代表原作效果重放、独立发现或方向比较已经完成。
+For public usage, see [host evaluation document](../../docs/final-evaluation.md). The full evaluation execution path is in place. Reproduction of the original effect, independent discovery, and direction comparison remain incomplete.

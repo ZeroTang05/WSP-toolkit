@@ -1,4 +1,4 @@
-"""用真实本地模型演示 Python 和 MCP 的只读工具。"""
+"""Demonstrate Python and MCP read-only tools with a real local model."""
 
 import argparse
 import asyncio
@@ -15,7 +15,7 @@ from weight_programming import open_inspection
 
 
 async def inspect_tools(call):
-    """每项工具简单执行一次，保留用于对照的权重与激活切片。"""
+    """Each tool is simply executed once, retaining weights and activation slices for comparison."""
     model = await call("describe_model", {})
     site = "block.0.residual_out"
     assert any(item["site_id"] == site for item in model["sites"])

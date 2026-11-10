@@ -1,4 +1,4 @@
-"""把已有的方向投影和更新合并算法接到统一补丁。"""
+"""Integrate the existing direction projection and update merging algorithms into the unified patch."""
 
 import math
 
@@ -20,7 +20,7 @@ def _save(versions, parent_variant_id, replacements, method, source_ids=(), patc
 
 
 def project_weight(versions, parent_variant_id, tensor, direction, columns, strength=1.0, source_ids=()):
-    """保留未选列，并把所选列沿指定方向的分量削弱。"""
+    """Keeps unselected columns and weakens the components of selected columns in the specified direction."""
     weight = versions.read_native(parent_variant_id, tensor)
     vector = torch.as_tensor(direction, dtype=torch.float32)
     replacement = project_output_direction(weight, vector, columns, strength)
@@ -32,7 +32,7 @@ def project_weight(versions, parent_variant_id, tensor, direction, columns, stre
 def merge_updates(versions, parent_variant_id, patch_ids, method, coefficients=None,
                   density=None, target_norm=None, drop_probability=None, seed=None, dare_merge=None,
                   adapter_deltas=(), adapter_ids=()):
-    """将同一父版本上的补丁转成有效更新，再做加权或 TIES 合并。"""
+    """Convert patches on the same parent version into valid updates, and then perform weighted or TIES merge."""
     patches = [versions.patch_tensors(parent_variant_id, patch_id) for patch_id in patch_ids]
     if len(patches) + len(adapter_deltas) < 2:
         raise ValueError("Provide at least two source patches or registered adapters")
@@ -89,7 +89,7 @@ def merge_updates(versions, parent_variant_id, patch_ids, method, coefficients=N
 
 def prune_and_compensate(versions, artifacts, parent_variant_id, tensor, inputs, input_artifact_id,
                          method, sparsity=None, mask_artifact_id=None, relative_damping=0.01):
-    """复用 Wanda 或 SparseGPT 算法，保存删除掩码与候选补丁。"""
+    """Reuse the Wanda or SparseGPT algorithm and save pruning masks and candidate patches."""
     weight = versions.read_native(parent_variant_id, tensor)
     if (weight.ndim != 2 or inputs.ndim != 2 or inputs.shape[1] != weight.shape[1]
             or not inputs.numel() or not torch.isfinite(inputs).all()):

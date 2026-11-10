@@ -1,18 +1,18 @@
-# 核验器监督分布：失败诊断与论文依据
+# Verifier Supervision Distribution: Failure Diagnosis and Paper Basis
 
-本文保留成文时的实验设置、结果与状态。当前项目进度见[项目状态](../../PROJECT_STATUS.md)。
+This report preserves the experimental settings, results, and status at the time of writing. For the current project progress, see [Project Status](../../PROJECT_STATUS.md).
 
-日期：2026-11-06。V3完整dev诊断之后制定；表头修复控制及主完整基线保持冻结。本文没有声明新训练或多候选工作流已实施。
+Date: 2026-11-06. This plan was formulated after the full V3 development diagnostic; the header-repair control and main full baseline remain frozen. It does not claim that new training or multi-candidate workflows have been implemented.
 
-## 已执行的监督审计
+## Supervision audits completed
 
-`audit_verifier_data.py`读取固定训练视图并核对manifest哈希，仅使用官方FinQA train。6,251条监督中，首个算子为add的例子包含2,543个reject、404个accept；divide包含1,166个accept却仅2个reject。确定性算子替换显著改变了标签条件分布。
+`audit_verifier_data.py` reads the fixed training view and checks the manifest hash, using only the official FinQA train. Among the 6,251 supervision examples, those starting with add contain 2,543 rejects and 404 accepts; those starting with divide contain 1,166 accepts and only 2 rejects. Deterministic operator replacement substantially changes the label distribution conditional on the operator.
 
-按问题ID哈希分成5,015条拟合和1,236条probe，只用首个算子的多数标签分类器在probe上正确1,049条（84.87%）；拟合全局多数标签reject在同一probe上的准确率47.98%。probe只对这个计数分类器拟合独立，部分问题可能被语言模型SFT更新使用。因此84.87%不是LLM能力、真实错误检测或其未见泛化成绩。
+A question-ID hash divides the data into 5,015 fitting examples and 1,236 probe examples. A classifier using only the first operator and its majority label is correct on 1,049 probe examples (84.87%); the global majority label reject, determined on the fitting split, achieves 47.98% on the same probe. The probe is held out only from fitting this count-based classifier; some questions may have been used for the language model SFT update. Therefore, 84.87% does not measure LLM capability, real error detection, or generalization to unseen data.
 
-V3完整dev的371个divide起始规划中，213个错误被接受，9个错误被拒绝，149个正确被接受；训练监督中的divide负例极少。此关联提示监督分布不匹配，不能证明具体模型的错误完全由首算子捷径或表头缺失造成。现有68次拒绝后重试0题由错变对、1题由对变错，进一步说明不能用合法率代替工作流收益。
+Among the 371 divide-first plans in the full V3 development set, 213 incorrect plans were accepted, 9 incorrect plans were rejected, and 149 correct plans were accepted. Training supervision contains very few negative divide examples. This correlation suggests a mismatch in the supervision distributions and does not prove that errors in a specific model are entirely caused by first operator shortcuts or missing table headers. Across the 68 retries after rejection, 0 questions changed from wrong to right and 1 changed from right to wrong. This further illustrates that program validity cannot stand in for workflow gains.
 
-当前审计及问题分组probe可复跑：
+The current audit and problem group probe can be rerun:
 
 ```sh
 .venv/bin/python src/audit_verifier_data.py \
@@ -20,20 +20,20 @@ V3完整dev的371个divide起始规划中，213个错误被接受，9个错误�
   --output research/finqa-verifier-data-audit.json
 ```
 
-## 新训练方向的论文来源与边界
+## Sources and boundaries of papers in new training directions
 
-[Cobbe等2021，第4.2节](https://arxiv.org/html/2110.14168v2#S4.SS2)使用生成器的实际候选及最终答案正确性训练verifier，并以核验得分选择候选。其方法提供两项独立可借鉴的改变：真实候选监督、推理时采样与排序。原论文并非“人工替换第一个算子产生负例”，也不是“二元拒绝后再重写一次”。
+[Cobbe et al. 2021, Section 4.2](https://arxiv.org/html/2110.14168v2#S4.SS2) trains the verifier using the generator’s actual candidates and final answer correctness, and selects candidates based on the verification score. Its approach offers two changes that can be studied independently: supervision on real candidates and inference-time sampling and ranking. The original paper is not "artificially replacing the first operator to generate negative examples", nor is it "rewriting it after binary rejection".
 
-应用到FinQA时，候选应仅从官方train问题生成，由固定官方执行器和exe_ans标记结果。FinQA程序、LoRA参数化、生成式accept/reject目标、缩减的候选数均属于本项目适配，不能沿用论文成绩或暗示完整复现。正确最终数字仍不证明证据理解与推理过程正确。
+When applied to FinQA, candidates should be generated only from official train questions, with results labeled by the fixed official executor and exe_ans. The FinQA program, LoRA parameterization, generative accept/reject targets, and the reduced number of candidates are all adaptations of this project and do not justify carrying over the paper’s results or claiming a complete reproduction. A correct final number does not prove that the evidence was understood or the reasoning process was correct.
 
-[Lightman等2023](https://arxiv.org/abs/2305.20050)研究步骤反馈与最终结果反馈的区别。当前没有步骤有效性标注，故过程监督不在已实施范围；数值计算可执行不构成步骤语义正确的标签。
+[Lightman et al. 2023](https://arxiv.org/abs/2305.20050) study the difference between feedback on reasoning steps and feedback on final outcomes. There is currently no step validity label, so process supervision is not within the scope of implementation; the fact that a numerical calculation executes does not label a step as semantically correct.
 
-## 后续对照必须隔离什么
+## What must be isolated for subsequent control?
 
-1. 保持V3与V4表头对照不变，先辨别表示影响，不把新负例与表头同时替换后声称各自有效。
-2. 固定训练分区问题、生成器、样本来源与随机种子。记录哪些问题曾参与生成器更新；未参与更新不等于整个预训练过程未见。候选划分按问题分组，不能让同一题不同候选跨监督训练／验证集。
-3. 合成负例与实际模型错误分别训练，匹配问题覆盖、正负比例、更新步数、rank／总delta字节；候选生成和标注成本独立计入。只提高训练步数不能回答数据分布作用。
-4. 在相同verifier下分别比较当前拒绝重写与多候选排序，另有随机选择、执行答案投票及oracle候选上界诊断。候选数、生成token上限与实际时间／显存分别报告，不将相同token上限称为完全等成本。
-5. 保留原始单次、prompt-only、标准多任务、原角色与共享／副本参照。所有主张以完整dev/test、三种子和端到端执行准确率为依据；oracle仅诊断，不能计入可部署收益。
+1. Keep the V3/V4 header comparison fixed and first identify the effect of the representation change. Do not change both negative examples and headers simultaneously and then attribute an effect to each.
+2. Fix the training-split questions, generator, sample sources, and random seeds. Record which questions were used to update the generator; exclusion from that update does not establish that they were unseen during pretraining. Split candidates by question, so candidates for the same question cannot cross the supervised training and validation sets.
+3. Train separately on synthetic negatives and actual model errors, matching question coverage, positive/negative ratios, update steps, and rank/total delta bytes. Account separately for candidate generation and labeling costs. Simply increasing the number of training steps cannot answer the question of data distribution.
+4. With the same verifier, compare the current rewrite-after-rejection approach with multi-candidate ranking, alongside random selection, executed-answer voting, and an oracle candidate upper-bound diagnostic. Report candidate counts, generation-token limits, and actual time/GPU memory separately; equal token limits do not establish fully equal costs.
+5. Retain the original single-shot, prompt-only, standard multitask, original-role, and shared-base/copy references. Base all claims on full dev/test results, three seeds, and end-to-end execution accuracy. The oracle is diagnostic only and cannot count as a deployable gain.
 
-目前只是来源明确的后续实验要求，尚无这些新条件的实测结果；第一步仍是收齐已提交的表头、基线与角色矩阵。
+These are source-backed requirements for follow-up experiments; there are no measured results for the new conditions yet. The first step remains collecting the submitted header, baseline, and role matrices.

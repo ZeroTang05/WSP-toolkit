@@ -9,7 +9,7 @@ benchmarks/
 .env*
 *_key.txt
 
-# 本地研究资料、运行记录与历史副本。
+# Local research material, run records, and historical copies.
 /archive/
 /assets/illustrations/
 /handoff/

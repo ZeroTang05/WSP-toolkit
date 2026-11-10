@@ -1,4 +1,4 @@
-"""用 Transformers 的 DistilBERT 分类器复用权重版本、观测和产物接口。"""
+"""Reuse weight versions, observations, and artifact interfaces with the Transformers DistilBERT classifier."""
 
 from contextlib import contextmanager
 from importlib.metadata import version
@@ -12,7 +12,7 @@ from .hf_backend import HuggingFaceBackend
 
 
 class DistilBertBackend(HuggingFaceBackend):
-    """分类输出按标签排列，内部快照沿用样本、词元、通道坐标。"""
+    """Classification output is arranged by label, and internal snapshots follow sample, token, and channel coordinates."""
 
     modes = ("predict",)
 
@@ -47,22 +47,22 @@ class DistilBertBackend(HuggingFaceBackend):
             "attention_implementation": config._attn_implementation, "attention_direction": "bidirectional"}
 
     def encode(self, text):
-        """沿用分类器原始分词规则，保留 CLS 与 SEP 特殊词元。"""
+        """Use the classifier’s original tokenization rules and retain CLS and SEP special tokens."""
         return self.tokenizer.encode(text, add_special_tokens=True)
 
     def observation_sites(self):
-        """提供与生成模型相同的逻辑坐标，登记真实编码器位置。"""
+        """Provide the same logical coordinates as the generative model and register actual encoder sites."""
         sites = super().observation_sites()
         for site in sites.values():
             site["modes"] = ["predict"]
         return sites
 
     def linear_input_module(self, layer):
-        """编码器前馈模块的第二个线性层接收中间激活。"""
+        """The second linear layer of the encoder feedforward module receives intermediate activations."""
         return self.layers[layer].ffn.lin2
 
     def projection_output_sites(self, tensor):
-        """前馈输出允许使用同一模块的观测，层归一化后的残差另有坐标。"""
+        """The feedforward output allows the use of observations from the same module, and the residuals after layer normalization have additional coordinates."""
         for layer, block in enumerate(self.layers):
             if self.parameters.get(tensor) is block.ffn.lin2.weight:
                 return [f"block.{layer}.mlp.out"]
@@ -70,7 +70,7 @@ class DistilBertBackend(HuggingFaceBackend):
 
     @contextmanager
     def _observe(self, hidden, mlp, attention, mlp_out=()):
-        """只挂接请求的位置，退出前移除全部观测函数。"""
+        """Attach hooks only at requested sites and remove all observation hooks on exit."""
         captured, handles = {}, []
 
         def post(key, index=None):
@@ -82,7 +82,7 @@ class DistilBertBackend(HuggingFaceBackend):
         try:
             for layer in hidden:
                 module = self.decoder.embeddings if layer == 0 else self.layers[layer - 1]
-                # 开启注意力时，TransformerBlock 的首项为注意力，末项为残差。
+                # When attention is turned on, the first item of TransformerBlock is attention and the last item is residual.
                 handles.append(module.register_forward_hook(post(f"hidden_{layer}", None if layer == 0 else -1)))
             for layer in mlp:
                 def pre(_module, args, key=f"mlp_{layer}"):
@@ -98,7 +98,7 @@ class DistilBertBackend(HuggingFaceBackend):
                 handle.remove()
 
     def prepare_predict(self, request, policy):
-        """共用词元与观测预算，增加标签分数的数组说明。"""
+        """Share tokens and observation budgets, and add array descriptions of label scores."""
         prepared = self.prepare_teacher(request, policy)
         count, labels = len(prepared["sequences"]), self.model.config.num_labels
         prepared["shapes"].update(class_logits=((count, labels), "float32"),
@@ -111,7 +111,7 @@ class DistilBertBackend(HuggingFaceBackend):
 
     @torch.inference_mode()
     def predict(self, request, prepared, output):
-        """同一次前向产生分类分数和内部快照，保留有效词元掩码。"""
+        """The same forward pass produces classification scores and internal snapshots, preserving valid token masks."""
         arrays = {}
         for name, (shape, dtype) in prepared["shapes"].items():
             array = np.lib.format.open_memmap(Path(output) / f"{name}.npy", mode="w+", dtype=dtype, shape=shape)

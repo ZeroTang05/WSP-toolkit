@@ -1,55 +1,55 @@
-# 工具语义：可证明的局部性质与不能推出的结论
+# Tool semantics: provable local properties and limits
 
-本节补充两层形式化。以下是标准代数性质的推导，不是新的优化定理；算法保真仍需对照原论文和作者实现，任务收益仍需完整实验。
+This document formalizes local properties using standard algebra. These derivations do not introduce a new optimization theorem. Algorithm fidelity still requires comparison with the original papers and author implementations, and task benefits require complete experiments.
 
-新增更新组合、权重谱截断、固定激活分布输出重建与BI深度选择的形式化见[programming-expansion.md第2节](../reports/programming-expansion.md)。它们分别提供精确更新代数、Frobenius最优近似、局部输出最优近似和启发式结构选择；最后一项没有任务最优保证。新增注册信息用于方法来源声明，独立CLI尚未通过ContractRegistry统一执行，不能把登记当成执行时验证。
+[Programming expansion, Section 2](../reports/programming-expansion.md) formalizes update combinations, weight-spectrum truncation, output reconstruction under a fixed activation distribution, and BI-based depth selection. These respectively provide exact update algebra, a Frobenius-optimal approximation, a locally optimal output approximation, and a heuristic structure-selection rule. The last has no task-optimality guarantee. New registry entries declare method provenance; the standalone CLI does not yet run uniformly through `ContractRegistry`, so registration does not establish runtime verification.
 
-## 1. Wanda 掩码
+## 1. Wanda Mask
 
-来源：[Wanda](https://arxiv.org/abs/2306.11695)。对每个输出行，按 |W_ij|·sqrt(E_j) 稳定排序，取 k=floor(p·d_in) 个唯一列索引。排序返回列的排列，因此每行恰好 k 个被选择位置；令这些位置为零，其余位置按原张量复制，便满足形状不变、非掩码位置精确不变。
+Source: [Wanda](https://arxiv.org/abs/2306.11695). For each output row, stably sort columns by |W_ij|·sqrt(E_j) and select k=floor(p·d_in) unique column indices. Sorting returns a permutation of columns, so exactly k positions are selected in each row. Setting those positions to zero and copying all other values preserves the tensor shape and leaves every unmasked position exactly unchanged.
 
-该性质描述“选择的位置数”，不是最终非零权重减少的精确数量：原权重可能已经为零。它也不说明剪枝损失最小、领域能力保持或推理加速。不同输入统计即使形状相同，也可能产生不同掩码；接口中的统计量名称不是统计来源正确的证明。实际工具必须自己采集统计，配合固定源码和作者对照验证。
+This property counts selected positions, not the exact reduction in nonzero weights: some selected weights may already be zero. It does not establish minimum pruning loss, preservation of domain capabilities, or faster inference. Input statistics with the same shape can yield different masks; the name of a statistic in an interface does not establish its provenance. The tool must collect its own statistics and validate them against pinned source code and the author's implementation.
 
-`prune_public.py` 内部采集输入能量、执行已验证的逐行规则，并保存 bitmask。Agent 只选择声明允许的配置，不提交自造统计张量。通用 Python 库的底层函数并非独立安全边界。
+`prune_public.py` collects input energy, applies the validated row-wise rule, and saves the bitmask. The agent selects only declared allowed configurations and does not submit invented statistic tensors. Low-level functions in the general Python library are not an independent security boundary.
 
-## 2. gated MLP 的合法结构切片
+## 2. Valid structural slicing of gated MLP
 
-对无偏置 gated MLP，令 h(x)=σ(W_g x)⊙(W_u x)，输出 y=W_d h(x)。令 S 是选择保留通道的 0/1 行选择矩阵，M=SᵀS。因为 σ 和 Hadamard 乘法逐元素作用：
+For a bias-free gated MLP, define h(x)=σ(W_g x)⊙(W_u x) and output y=W_d h(x). Let S be a 0/1 row-selection matrix for the retained channels, and M=SᵀS. Since σ and the Hadamard product act element-wise:
 
-S h(x)=σ(SW_g x)⊙(SW_u x)。
+S h(x)=σ(SW_g x)⊙(SW_u x).
 
-因此删除 gate/up 的对应行和 down 的对应列后，
+After removing the corresponding gate/up rows and down columns:
 
-y_slice=(W_d Sᵀ)[σ(SW_g x)⊙(SW_u x)]=W_d M h(x)。
+y_slice=(W_d Sᵀ)[σ(SW_g x)⊙(SW_u x)]=W_d M h(x).
 
-这证明合法切片与“同一通道掩码的原 MLP”在实数运算下等价；不证明它与未剪枝原模型等价。带偏置时必须另行处理偏置，当前结构适配器在修改任何层之前拒绝该情况；它也拒绝缺失层 selector、重复／越界通道和非统一宽度。
+Thus, in real arithmetic, valid slicing is equivalent to the original MLP with the same channel mask. This does not establish equivalence to the unpruned model. Biases require separate handling; the current structural adapter rejects biased layers before changing any layer. It also rejects missing layer selectors, duplicate or out-of-bounds channels, and nonuniform widths.
 
-来源：[LLM-Pruner](https://arxiv.org/abs/2305.11627) 的依赖组思路；本项目是一阶 MLP 适配，不是完整依赖图、所有重要性变体与恢复流程的复现。
+Source: the dependency-group idea in [LLM-Pruner](https://arxiv.org/abs/2305.11627). This project implements a first-order MLP adaptation, not the full dependency graph, all importance variants, or the recovery procedure.
 
-## 3. LoRA 和函数式 delta
+## 3. LoRA and functional delta
 
-来源：[LoRA](https://arxiv.org/abs/2106.09685)。在实数代数下，(W_0+c·α/r·BA)x=W_0x+c·α/r·B(Ax)。实现中让 W_0 不变，在模块输出上附加低秩项，能表达同一权重更新。
+Source: [LoRA](https://arxiv.org/abs/2106.09685). Under real arithmetic, (W_0+c·α/r·BA)x=W_0x+c·α/r·B(Ax). Keeping W_0 fixed and adding the low-rank term to the module output therefore expresses the same weight update.
 
-有限精度下，加法顺序、矩阵乘法形状与合并量化都会影响误差，所以不会用代数恒等式直接声称 BF16 逐 bit 相同。已提供 CPU 输出／异常隔离测试，以及实际 Qwen0.6 的 FP32 物化对照；BF16 生成与最终任务效果仍按实际执行器测量。
+With finite precision, addition order, matrix multiplication shape, and merge quantization affect error. The algebraic identity alone does not establish bitwise equality in BF16. CPU output and exception-isolation tests and an FP32 materialization comparison on real Qwen0.6 are available; BF16 generation and final task effects must still be measured with the actual executor.
 
-层分组系数只是同一合法更新的细化参数化，来源与适配边界见 `search-protocol.md`。它不增加“手写任意有效方向”的能力。
+Layer-group coefficients refine the parameterization of the same valid update. See `search-protocol.md` for the source and adaptation limits. They do not confer the ability to handwrite any valid direction.
 
-## 4. 组合与架构适配
+## 4. Combination and architectural adaptation
 
-若 T_1、T_2 均通过局部检查，还需要 Post(T_1) 满足 Pre(T_2)，才是合法组合。例如结构剪枝后，原 LoRA 因子形状可能不再匹配；原 base 指纹也可能失效。当前标准 benchmark 执行器拒绝同时传入 mask 与 delta，直到单独定义并验证组合协议。
+Even when T_1 and T_2 pass their individual checks, Post(T_1) must satisfy Pre(T_2) for their combination to be valid. For example, structural pruning may change the shape required by the original LoRA factors or invalidate the base fingerprint. The standard benchmark executor currently rejects a mask and delta passed together until a separate combination protocol is defined and verified.
 
-若每步验证有限输入上的输出误差，仍不能直接推出工作流分布上的最终准确率误差界。跨模型还必须重新编译模块位置和形状，不复制不同架构的原始 delta。工具正确、控制器选择正确、领域质量保持和部署高效是分别需要证据的问题。
+Verifying output error on a finite input set at each step does not directly bound final accuracy error on the workflow distribution. Cross-model use also requires recompiling module locations and shapes, rather than copying a delta between architectures. Tool correctness, controller selection, domain-quality preservation, and deployment efficiency each require their own evidence.
 
-## 5. 代理保护约束不蕴含准确率保留
+## 5. Proxy guard constraints do not imply accuracy preservation
 
-即使分类概率的平均CE下降，也不能推出准确率上升或保持。例如两个二分类题中，原模型给真实类别概率分别0.51、0.01，准确率1/2、平均CE约2.639；改后概率均0.49，准确率0/2、平均CE约0.713。改后CE明显下降，准确率仍可下降。这是反例，不是经验模型结果或新定理；字符长度归一化之后的选项softmax也不改变这种一般局限。
+A decrease in mean classification cross-entropy (CE) does not establish that accuracy increases or stays constant. Consider two binary classification questions. If the base assigns probabilities 0.51 and 0.01 to the true classes, accuracy is 1/2 and mean CE is approximately 2.639. If an edit changes both probabilities to 0.49, accuracy is 0/2 and mean CE is approximately 0.713. CE decreases substantially while accuracy falls. This is a counterexample, not an empirical model result or new theorem. Applying option softmax after character-length normalization does not remove the general limitation.
 
-本项目32题开发CE的bootstrap只检验声明的代理约束，不能冒称论文中的准确率保留条件、RLHF参考策略KL约束或总体能力保证。实际固定0.8候选满足开发代理，却在完整ARC-C上从363/1172变为351/1172；配对题目95%区间覆盖零，尚不能推断总体退化，但已要求单独报告准确率点估计与种子变异。协议不因该最终测试结果而改写选择规则。
+The bootstrap on development CE for this project's 32 questions tests only the declared proxy constraint. It does not establish the paper's accuracy-preservation condition, an RLHF reference-policy KL constraint, or a general capability guarantee. The fixed 0.8 candidate satisfies the development proxy, yet its full ARC-C score changes from 363/1172 to 351/1172. The 95% paired-question interval includes zero, so overall degradation is not established; the accuracy point estimate and seed variation must nevertheless be reported separately. The final test result does not change the protocol's selection rule.
 
-## 6. 输入绑定与信息保留是不同条件
+## 6. Input binding and information retention are different conditions
 
-FinQA作者的[固定版本行文本函数](https://github.com/czyssrs/FinQA/blob/0f16e2867befa6840783e58be38c9efb9229d742/code/utils/general_utils.py#L21)将列标题与数值一起表达。V3虽然通过公开输入来源和hash检查，选择数据行后仍会丢失年份标题；因此来源正确不蕴含表示充分。完整开发运行的prompt重建确认705题具有这种表示缺口，尚不能把705题都归因为该缺口。
+The FinQA authors' [pinned row-to-text function](https://github.com/czyssrs/FinQA/blob/0f16e2867befa6840783e58be38c9efb9229d742/code/utils/general_utils.py#L21) expresses column headers alongside values. V3 passes public-input provenance and hash checks, but selecting data rows still loses the year header. Correct provenance therefore does not guarantee a sufficient representation. Reconstructing prompts from the complete development run confirms this representation gap in 705 questions; it does not establish that all 705 outcomes were caused by the gap.
 
-在公共输入确实含有表头h的前提下，令R为非表头数据行集合，对选中ID集合A定义闭包C(A)=A∪{h}（若A∩R非空），否则C(A)=A。于是A⊆C(A)、C(C(A))=C(A)，且A⊆B时C(A)⊆C(B)。V4使用该规则保留公共表头，retriever预测及其ID召回统计保持原样。这只是输入完整性工程条件和简单集合性质，不是新剪枝算法，也不保证保留所有注释、单位或全文上下文。修复后的效果须与冻结V3按同预算实际比较。
+Assume the public input contains a header h. Let R be the non-header data rows, and define the closure of selected IDs A as C(A)=A∪{h} when A∩R is nonempty, and C(A)=A otherwise. Then A⊆C(A), C(C(A))=C(A), and A⊆B implies C(A)⊆C(B). V4 retains the shared header using this rule, leaving retriever predictions and their ID-recall statistics unchanged. These are input-integrity engineering conditions and elementary set properties, not a new pruning algorithm. They do not guarantee preservation of every annotation, unit, or full-text context. The repaired version must be compared with frozen V3 under the same actual budget.
 
-同一原角色因子的8题输入控制现已完成：retriever提示词及输出不变，表头保留后PM样本的减法顺序得到修正，整体0/8变1/8；另一个程序改变操作数但仍错误。它展示输入表示也会改变输出，不能将这种改善归因于参数编辑。完整分区及重训对照未齐，不据此作领域保真结论。
+An eight-question input control using the same original role factor is complete. The retriever prompt and output were unchanged. Retaining the header corrected the subtraction order in the PM example, and the overall result changed from 0/8 to 1/8; another program changed its operand but remained wrong. Input representation can therefore affect output, and this improvement cannot be attributed to parameter editing. Full-partition and retraining controls are incomplete, so they do not yet support a domain-fidelity conclusion.

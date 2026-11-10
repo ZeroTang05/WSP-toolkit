@@ -1,4 +1,4 @@
-"""从已保存的自注意力矩阵计算跨层传播和最大流。"""
+"""Compute cross-layer propagation and maximum flow from the saved self-attention matrix."""
 
 import numpy as np
 
@@ -7,7 +7,7 @@ _ATTENTION_AXES = ["sample", "head", "query_token", "key_token"]
 
 
 def attention_layers(artifacts, run_id, site_ids, sample_index, max_tokens):
-    """从一次快照读取对齐的注意力，并加入残差连接。"""
+    """Read aligned attention from a snapshot and join residual connections."""
     references = artifacts.references(run_id)
     tokens, _ = artifacts.array(references["input_ids"])
     valid, _ = artifacts.array(references["valid_tokens"])
@@ -30,7 +30,7 @@ def attention_layers(artifacts, run_id, site_ids, sample_index, max_tokens):
         attention = values[sample_index][:, positions[:, None], positions].mean(axis=0, dtype=np.float64)
         if not np.isfinite(attention).all() or (attention < 0).any() or not np.allclose(attention.sum(1), 1):
             raise ValueError(f"Invalid attention probabilities on valid tokens at {site_id}")
-        # 单位矩阵表示残差沿同一词元位置传递。
+        # The identity matrix represents the residual propagation along the same token position.
         combined = attention + identity
         matrices.append(combined / combined.sum(axis=1, keepdims=True))
         source_ids.append(source_id)
@@ -39,7 +39,7 @@ def attention_layers(artifacts, run_id, site_ids, sample_index, max_tokens):
 
 
 def attention_rollout(matrices):
-    """按 Abnar 与 Zuidema 的方法累乘含残差的注意力矩阵。"""
+    """Multiply the attention matrix containing residuals according to the method of Abnar and Zuidema."""
     rollout = matrices[0]
     for attention in matrices[1:]:
         rollout = attention @ rollout
@@ -47,7 +47,7 @@ def attention_rollout(matrices):
 
 
 def attention_flow(matrices, query_index):
-    """按论文作者的做法，独立计算查询词元到每个输入词元的最大流。"""
+    """According to the author's approach, the maximum flow from the query word to each input word is calculated independently."""
     import networkx as nx
 
     width = matrices[0].shape[0]
@@ -58,14 +58,14 @@ def attention_flow(matrices, query_index):
         graph.add_edges_from(((layer, int(query)), (layer - 1, int(key)), {"capacity": float(attention[query, key])})
                              for query, key in zip(queries, keys))
     source = (len(matrices), query_index)
-    # 每个输入词元各自作为汇点，原始容量和归一化分数分别保留。
+    # Each input token is used as a sink point, and the original capacity and normalized score are retained separately.
     raw = np.array([nx.maximum_flow_value(graph, source, (0, token), flow_func=nx.algorithms.flow.edmonds_karp)
                     for token in range(width)])
     return (raw / raw.sum())[None, :], raw.tolist()
 
 
 def attention_flow_graph(tokenizer, positions, token_ids, query, scores, evidence, source_artifact_id):
-    """把逐词元最大流保存为可画的有向图。每条边汇总跨层结果。"""
+    """Save token-wise maximum flow as a drawable directed graph. Each edge summarizes cross-layer results."""
     decoded = tokenizer.batch_decode([[token] for token in token_ids])
     labels = [f"{position} · {text.strip() or repr(text)}" for position, text in zip(positions, decoded)]
     nodes = [{"id": "query", "label": labels[positions.index(query)], "level": 0, "token_position": query},

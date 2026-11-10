@@ -1,4 +1,4 @@
-"""在真实模型上比较路径替换、ACDC 删边和 EAP 梯度估计。"""
+"""Compare path replacement, ACDC edge deletion, and EAP gradient estimation on real models."""
 
 import argparse
 import asyncio

@@ -1,164 +1,164 @@
-# 先验证协作，再以参数编程构造角色专用模型
+# Verify collaboration first, then construct role-specific models using parametric programming
 
-2026-11-06。用户新增的核心方向。本文修改应用部分的研究顺序：先建立多Agent协作的任务收益，再抽取／构造可替代各角色的小模型，最后验证端到端性能与效率。既有权重工具、跨模型分析继续执行；已有角色训练不作为“协作已有效”的证明。
+2026-11-06. This research direction changes the order of the application work: first establish a task benefit from multi-agent collaboration, then extract or construct small models that can replace individual roles, and finally test end-to-end quality and efficiency. Existing weight tools and cross-model analyses continue; existing role training does not establish a collaboration benefit.
 
-已落地的第一阶段执行协议见[collaboration-benchmark.md](collaboration-benchmark.md)：HotpotQA五条件、两预算、三推理种子的训练派生开发比较，以及正开发增益后冻结的完整公开dev确认。数据准备和后续协调作业已提交，尚无协作质量结果。
+The implemented first-stage protocol is in [collaboration-benchmark.md](collaboration-benchmark.md). It compares five HotpotQA conditions at two budgets and three inference seeds on training-derived development data, then confirms on the complete public dev set after freezing a positive development result. Data preparation and the subsequent coordination job have been submitted; no collaboration quality results are available yet.
 
-## 1. 核心假设与研究对象
+## 1. Core assumptions and research objects
 
-研究链条为：
+The research chain is:
 
 ```mermaid
 flowchart LR
-    A[单Agent与等预算多次推理] --> B[验证多Agent协作收益]
-    B --> C[冻结角色接口与工作流]
-    C --> D[大模型观测并编程小模型]
-    D --> E[逐角色替换及组合替换]
-    E --> F[端到端质量与成本前沿]
+    A[Single Agent and equal-budget multiple inferences] --> B[Verification of multi-Agent collaboration benefits]
+    B --> C[Freeze role interface and workflow]
+    C --> D[Large model observes and programs small models]
+    D --> E[Role-by-role and joint replacement]
+    E --> F [End-to-end quality and cost frontier]
 ```
 
-角色专用模型的专业表述是**角色条件策略的参数化专用化与压缩**。它不预设基座中存在一块现成的“检索神经元”可以无损切出来。角色边界首先来自工作流的输入、输出、工具权限和职责；随后用角色行为数据与干预测量确定参数更新和可删结构。
+The technical framing is **parameter specialization and compression of role-conditioned policies**. It does not assume that there is a ready-made "retrieval neuron" in the base that can be cut out without damage. Role boundaries first come from the input, output, tool permissions and responsibilities of the workflow; then role behavior data and intervention measurements are used to determine parameter updates and deletable structures.
 
-需要分开检验三项假设：
+Three hypotheses need to be tested separately:
 
-- H1：固定模型能力、可用信息与工具条件后，协作结构优于强单Agent／独立多采样的预算—质量前沿。
-- H2：普通小模型无法充分替代的角色，可以通过角色监督及参数编程得到更好的替代者。
-- H3：在普通角色LoRA、统一多任务适配与非LLM搜索之外，LLM编程者带来可复现的额外质量或效率收益。
+- H1: After fixing the model capabilities, available information and tool conditions, the collaborative structure is better than the budget-quality frontier of strong single agent/independent multi-sampling.
+- H2: For roles that cannot be adequately replaced by ordinary small models, better replacements can be obtained through role supervision and parameter programming.
+- H3: In addition to common role LoRA, unified multi-task adaptation and non-LLM search, LLM programmers bring reproducible additional quality or efficiency gains.
 
-H1成立不推出H2/H3。小模型最终保持教师系统质量且成本下降，也是有价值的结果；“质量进一步提高且效率提高”是更强的目标，需要实际Pareto支配证据。
+Establishing H1 does not imply H2 or H3. The small model ultimately maintains the quality of the teacher system and reduces the cost, which is also a valuable result; "further improving quality and improving efficiency" is a stronger goal that requires actual Pareto dominance evidence.
 
-## 2. 直接相关工作及差异定位
+## 2. Directly related work and differential positioning
 
-| 论文 | 已有方法及本研究应借鉴的内容 | 本研究必须额外回答 |
+| paper| Existing methods and what this study should learn from| This study must additionally answer|
 |---|---|---|
-| [Multiagent Debate，ICML 2024](https://arxiv.org/abs/2305.14325) | 多实例提出答案、交流并修订，提供协作评估起点 | 与同预算独立采样／单Agent修订相比，交流本身有无收益？ |
-| [Rethinking the Bounds，ACL 2024](https://aclanthology.org/2024.acl-long.331/) | 在其比较中，强提示的单Agent可接近最佳讨论效果 | 单次弱基线不足以证明协作优势，须加入强单Agent |
-| [MAGDi，ICML 2024](https://proceedings.mlr.press/v235/chen24ah.html) | 利用多Agent交互图对小模型做结构蒸馏 | 保留角色接口的替换，与蒸馏成单模型相比有何价值？ |
-| [MoRAgent，ICML 2025](https://proceedings.mlr.press/v267/han25j.html) | reasoner/executor/summarizer三个角色LoRA及角色数据生成 | 不能把共享基座或角色LoRA作为原创贡献 |
-| [MapCoder-Lite，EACL 2026](https://aclanthology.org/2026.findings-eacl.346/) | 成功轨迹、监督纠错、各Agent独立LoRA；第5.3节共享冻结7B基座 | 参数编程要在相同角色数据、训练成本和接口下超越普通角色微调 |
-| [Think Big, Search Small，2026预印本](https://arxiv.org/abs/2607.07548) | 区分任务委派、执行、固定答案生成，研究角色容量不对称 | 应先测角色替换敏感性，再决定压缩预算；不能默认每角色同样可缩小 |
-| [MAS-OPD，2026预印本](https://arxiv.org/abs/2609.34234) | 学生轨迹上的教师监督、角色优势与协作归因 | 学生接手后的状态分布不同，纯教师轨迹微调可能不足 |
-| [Chain-of-Agents，2025预印本](https://arxiv.org/abs/2508.13167) | 从多Agent轨迹训练单模型内部的多角色推理 | 需要单模型吸收工作流的对照，避免默认必须保留多个角色 |
+| [Multiagent Debate，ICML 2024](https://arxiv.org/abs/2305.14325) | Multiple instances propose answers, communicate, and revise to provide a starting point for collaborative assessment| Compared with independent sampling/single-agent revision with the same budget, is there any benefit from the exchange itself?|
+| [Rethinking the Bounds，ACL 2024](https://aclanthology.org/2024.acl-long.331/) | In its comparison, a single agent with strong prompts can approach the best discussion effect| A single weak baseline is not enough to prove the advantages of collaboration, and a strong single Agent must be added|
+| [MAGDi，ICML 2024](https://proceedings.mlr.press/v235/chen24ah.html) | Use multi-Agent interaction graphs to perform structural distillation on small models| What is the value of a replacement that preserves the role interface versus distilling it into a single model?|
+| [MoRAgent，ICML 2025](https://proceedings.mlr.press/v267/han25j.html) | reasoner/executor/summarizer three roles LoRA and role data generation| Shared bases or role LoRA cannot be considered original contributions|
+| [MapCoder-Lite，EACL 2026](https://aclanthology.org/2026.findings-eacl.346/) | Success trajectory, supervision and error correction, independent LoRA for each Agent; Section 5.3 Shared Freezing 7B Base| Parameter programming should go beyond ordinary role fine-tuning under the same role data, training costs and interfaces|
+| [Think Big, Search Small, 2026 preprint](https://arxiv.org/abs/2607.07548)| Distinguish task delegation, execution, fixed answer generation, and study role capacity asymmetry| Role replacement sensitivity should be tested first before deciding to reduce the budget; it cannot be assumed that every role can be reduced equally|
+| [MAS-OPD, 2026 preprint](https://arxiv.org/abs/2609.34234)| Teacher supervision, role strengths and collaborative attributions on student trajectories| The students’ state distribution changes after they take over, and pure teacher trajectory fine-tuning may not be enough.|
+| [Chain-of-Agents, 2025 preprint](https://arxiv.org/abs/2508.13167)| Training multi-actor reasoning within a single model from multi-Agent trajectories| Compare with a single model trained to absorb the workflow, rather than assuming that multiple roles must be retained.|
 
-MapCoder-Lite全文已核对：共享基座＋agent-wise LoRA是直接先例。MAS-OPD等近期论文目前核对摘要及方法段，后续实现前需逐项核对源码、训练权限与预算；不将它们写成已复现方法。
+The full text of MapCoder-Lite has been checked: shared base + agent-wise LoRA is a direct precedent. For recent papers such as MAS-OPD, the abstracts and method sections have been checked, and the source code, training permissions and budget need to be checked item by item before subsequent implementation; they will not be written as reproduced methods.
 
-可研究的差异是：**以角色的端到端边际贡献为约束，让大模型选择论文驱动的参数程序、结构和资源分配，构造可替换的专用小模型。** 这仍是候选贡献，必须与上述工作的完整方法和实测对照进一步比较。
+The differences that can be studied are: **Use each role’s end-to-end marginal contribution as a constraint, and let a large model select literature-driven parameter programs, structures, and resource allocations to construct replaceable specialized small models.** This is still a candidate contribution and must be further compared with the full methodological and measured controls of the above work.
 
-## 3. 第一阶段：验证多Agent确实有用
+## 3. The first stage: Verify that multi-Agent is indeed useful
 
-### 3.1 任务选择
+### 3.1 Task selection
 
-优先新增候选是可离线复现的多跳问答：规划／分解、证据执行／抽取、答案综合三个角色，参照角色容量研究的拆分。以[HotpotQA官方资源](https://hotpotqa.github.io/)的公开数据、固定文档与官方答案／支持事实评分为起点。先做明确命名的distractor阅读条件，再独立扩展检索条件；不能把候选段落内搜索称为fullwiki检索。公开dev可作最终报告分区时，构造、选工作流与调参只能用train内部另划开发集；隐藏test没有本地标签则不冒称官方test成绩。
+The priority candidate is offline-reproducible multi-hop question answering, with planning/decomposition, evidence execution/extraction, and answer synthesis roles, following the role-capacity literature. Use [HotpotQA official resource](https://hotpotqa.github.io/)'s public data, fixed documents, and official answer/supporting fact scores as a starting point. First make clearly named distractor reading conditions, and then independently expand the search conditions; search within candidate paragraphs cannot be called fullwiki search. When public dev serves as the final reporting partition, construction, workflow selection, and parameter tuning must use a separate development split derived from train. Hidden-test results cannot be claimed when local labels are unavailable.
 
-这一选择依据是角色边界和证据指标较清楚，不是已经知道本地模型会获益。代码生成可作为第二任务，参考MapCoder-Lite并使用公开训练／隐藏测试边界。FinQA保留现有实验，但当前不能自动视为通过H1。
+This selection is based on clearer role boundaries and evidence indicators, rather than on the knowledge that local models will benefit. Code generation can be done as a secondary task, refer to MapCoder-Lite and use public training/hidden testing boundaries. FinQA retains existing experiments, but currently cannot be automatically considered to pass H1.
 
-现有FinQA的专用角色V3、seed11为425/1147；它改变了训练、角色流程及输出格式。原未训练single在dev几乎不能输出合法DSL，因而与角色训练方案的差值混入格式遵循／监督收益，不能单独证明多Agent协作。V3表头缺失也有混淆。新阶段需要同输入表示、同输出接口的有效基线。
+The existing specialized FinQA role V3 with seed 11 scores 425/1147, but changes training, the role workflow, and output format. The untrained single-agent baseline rarely produces valid DSL on dev, so its difference from the trained-role setup includes gains from format compliance and supervision. It does not by itself establish a multi-agent collaboration benefit. The missing V3 header is another confound. The new stage requires a valid baseline with the same input representation and the same output interface.
 
-### 3.2 第一阶段对照
+### 3.2 First stage comparison
 
-| 条件 | 保持什么 | 隔离什么 |
+| Condition | Held constant | What it isolates |
 |---|---|---|
-| 单Agent强提示 | 相同模型、工具、可用证据 | 最基本直接解题能力 |
-| 单Agent多步反思／修订 | 相同工具与总资源上限 | 多轮计算收益 |
-| 独立多采样＋固定聚合 | 相同候选数量／资源上限 | 采样多样性与投票收益 |
-| 同模型、角色化、无消息交换 | 角色prompt及调用额度 | 角色提示本身的贡献 |
-| 同模型、角色化、有通信 | 相同证据及工具权限边界 | 协作消息的贡献 |
-| 打乱／移除通信内容 | 通信预算保持，避免标签混入 | 消息是否被有效使用，探索性诊断 |
+| Strong single agent with prompting| Same models, tools, available evidence| Direct problem-solving ability|
+| Single-Agent multi-step reflection/revision| Same tools and total resource limit| Benefit from multiple reasoning rounds|
+| Independent multi-sampling + fixed aggregation| Candidate count and resource limit| Sampling diversity and voting gains|
+| Same model, role-based, no message exchange| Role prompts and number of calls| The contribution of the role prompt itself|
+| Same model, role specialization and communication| Same evidence and tool permission boundaries| Collaborative message contributions|
+| Scramble/remove communications| Communication budget; avoid leaking labels| Exploratory diagnosis of whether messages are used effectively|
 
-一个模型的多个上下文可以形成逻辑多Agent，未必需要多个物理副本；是否并行部署另作为执行条件报告。比较多个预算点，至少报告总输入／输出tokens、调用、工具操作、实际时延与峰值显存。相同上限并不意味着相同实际计算成本，不将其称完全等成本。
+Multiple contexts of a model can form logical multi-Agents, which may not require multiple physical copies; whether they are deployed in parallel is reported as an execution condition. Compare multiple budget points, reporting at least total input/output tokens, calls, tool operations, actual latency, and peak memory. The same upper limit does not mean the same actual computational cost, and it is not called equal cost.
 
-先用训练派生开发集选择工作流与预算，冻结后评估完整公开分区。定义相同预算b的协作收益
+First use a training-derived development set to select the workflow and budget, and then evaluate the complete public partition after freezing. Define the collaborative benefits of the same budget b
 
 \[
 \Delta_{\rm collab}(b)=Q(G_T;b)-\max_{s\in\mathcal S}Q(s;b),
 \]
 
-其中\(\mathcal S\)含强单Agent、修订和独立采样参照。max代表预先在开发集选择的强基线；不可测试后选最有利对手。对固定比较做题目配对与独立运行种子分析，并以预算曲线确认收益没有仅来自更多计算。
+Here \(\mathcal S\) contains strong single-agent, revision, and independent-sampling baselines. The maximum denotes a strong baseline selected on development data in advance; the most favorable opponent cannot be selected after testing. Use question pairing and independent run-seed analysis for the fixed comparisons, and use budget curves to confirm that the benefits don't just come from more calculations.
 
-**阶段门槛：** 对预先冻结的主要预算与比较，协作收益为正、配对区间下界大于0；同时报告绝对效应大小和其他预算结果。具体最小实用增益如需采用，必须在新确认前登记。若未通过，先研究任务／协作协议或接受负结果，不继续把该场景包装为成功系统后进行角色抽取。
+**Stage Threshold:** For pre-frozen main budgets and comparisons, the collaboration benefits are positive and the lower bound of the pairing interval is greater than 0; absolute effect sizes and other budget results are also reported. If the specific minimum practical gain needs to be adopted, it must be registered before new confirmation. If it fails, study the task/workflow fit first or accept the negative result. Do not continue to package the scenario as a successful system and then conduct role extraction.
 
-## 4. 第二阶段：大模型编程小模型的职责
+## 4. The second stage: Responsibilities of large model programming and small models
 
-教师系统\(G_T\)已通过第一阶段后，冻结其图、角色定义和接口。大模型在这里可担任两个不同角色：提供行为监督的教师，以及操作工具的模型编程者。二者贡献必须分开。
+After the teacher system \(G_T\) passes the first stage, freeze its topology, role definitions, and interfaces. The large model can serve in two different roles here: as a teacher who provides behavioral supervision, and as a model programmer who operates the tool. The two contributions must be separated.
 
-学生角色可写为
+The student role can be written as
 
 \[
 \pi_r^{(s)}=f_{\theta_s+\Delta_r,\mathcal G_r},\quad
 (\Delta_r,\mathcal G_r)=\mathrm{Execute}(p_r;\theta_s).
 \]
 
-\(p_r\)是有来源的参数程序，包含观测、训练／编辑、压缩、选择；它不是教师输出的任意浮点权重列表。教师与学生的参数坐标通常不同，不能把大模型delta直接加到小模型上。
+\(p_r\) is a sourced parameter program, including observation, training/editing, compression, and selection; it is not an arbitrary floating point weight list output by the teacher. The parameter coordinates of teachers and students are usually different, and the delta of the large model cannot be directly added to the small model.
 
-工具链分成三部分：
+The tool chain is divided into three parts:
 
-1. **生成角色能力。** 教师真实工作流轨迹按角色拆分，普通LoRA SFT是必需参照；数据只来自训练问题。只采最终成功轨迹可能缺少恢复行为，应保留有标签来源的学生失败和教师纠错。没有教师logits时不能声称实现完整KL蒸馏。
-2. **观测与编程。** 在学生上测激活、更新谱、梯度相关重要性与逐层删除响应；选择更新缩放／组合、秩压缩、Wanda或合法结构剪枝。工具提供的局部目标与来源见`programming-expansion.md`、`method-foundations.md`。
-3. **工作流反馈。** 候选角色接入完整工作流，在训练派生开发集测最终成功和实际成本。不能仅最小化该角色参考文本NLL：现有BO程序已显示代理最优不保证生成最佳。
+1. **Generate role capabilities.** Split real teacher-workflow trajectories by role. Ordinary LoRA SFT is a required reference; the data only comes from training problems. Successful trajectories alone may omit recovery behavior; retain labeled student failures and teacher corrections with their sources. One cannot claim to achieve complete KL distillation without teacher logits.
+2. **Observation and programming.** Test activation, update spectra, gradient-related importance, and layer-by-layer deletion responses on students; choose update scaling/combination, rank compression, Wanda, or valid structural pruning. For the local targets and sources provided by the tool, see `programming-expansion.md` and `method-foundations.md`.
+3. **Workflow feedback.** Integrate candidate roles into the complete workflow and measure final success and actual cost on training and development data. This role cannot simply minimize reference-text NLL: existing BO programs show that a proxy optimum does not guarantee optimal generation.
 
-大模型程序搜索与固定配方／随机／BO使用相同角色数据、工具权限、训练与评估预算。若LLM还额外生成训练例，应让非LLM策略使用同一份数据，或把“数据生成”和“参数决策”作交叉消融；否则无法定位收益。
+Large model program search and fixed recipe/random/BO use the same role data, tool permissions, training and evaluation budgets. If LLM also generates additional training examples, the non-LLM strategy should use the same data, or cross-ablate "data generation" and "parameter decision-making"; otherwise, the benefits cannot be located.
 
-不预设每个角色都应同样小：先测敏感性，允许规划角色较大、执行角色更小。跨规模角色不能共享不同基座的同一个张量存储；只有同基座角色才适用\(B+\sum D_r\)公式。
+It is not assumed that every role should be equally small: test sensitivity first and allow for a larger planning role and a smaller execution role. Roles across model scales cannot share the same tensor storage on different bases; only roles on the same base apply the \(B+\sum D_r\) formula.
 
-## 5. 第三阶段：逐角色替换、交互与部署
+## 5. The third stage: role-by-role replacement, interaction and deployment
 
-对角色r定义真实替换收益
+Define real replacement payoff for role r
 
 \[
 g_r=Q(G_T[r\leftarrow\pi_r^{(s)}])-Q(G_T),
 \]
 
-以及替换的实际成本变化。这里是整条工作流重新执行，不能仅在教师给定的完美上下文上评测学生。
+and the actual cost change of replacement. Here the entire workflow is re-enacted and students cannot be assessed solely on the perfect context given by the teacher.
 
-对两个角色再测
+Replace two roles jointly
 
 \[
 I_{rs}=Q(G_{r,s})-Q(G_r)-Q(G_s)+Q(G_T).
 \]
 
-它刻画联合替换交互；单角色都能胜任，联合系统仍可能因状态分布改变而失败。三角色时可测全部8个替换子集，比只测“全教师／全学生”更能定位瓶颈。角色固定上下文离线评分只作诊断；学生接管后的真实上下文是主结果。
+It characterizes joint replacement interactions; while a single actor is competent, the jointly replaced system may still fail due to changes in state distribution. With three roles, all 8 replacement subsets can be tested, which is better at locating bottlenecks than just testing "all teachers/all students". Role-fixed context offline scoring is diagnostic only; the real context after the student takes over is the primary result.
 
-最终至少比较：全教师系统、全部未专用化小模型、统一多任务学生、普通角色LoRA学生、参数编程角色学生，以及可行的整工作流单模型蒸馏。另用完全相同学生权重比较共享基座与独立副本，只隔离部署方式。
+Finally, at least compare: full teacher system, all unspecialized small models, unified multi-task students, ordinary role LoRA students, parametric programming role students, and feasible single model distillation of the entire workflow. Another comparison uses identical student weights to compare shared bases and independent replicas, only isolating the deployment method.
 
-压缩阶段先登记可接受质量损失\(\epsilon\)，约束\(Q(G_s)\ge Q(G_T)-\epsilon\)后最小化成本；保持质量与进一步提高质量分开报告。效率包括磁盘、峰值显存、总tokens、首token／端到端延迟、吞吐；单GPU串行共享与多GPU并发不能混成同一延迟条件。独立副本若能并行，可能以显存换延迟。
+In the compression stage, the acceptable quality loss \(\epsilon\) is first registered, and the cost is minimized after constraining \(Q(G_s)\ge Q(G_T)-\epsilon\); maintaining quality and further improving quality are reported separately. Efficiency includes disk, peak memory, total tokens, first token/end-to-end delay, and throughput; single-GPU serial sharing and multi-GPU concurrency cannot be mixed into the same delay condition. If independent copies can be parallelized, GPU memory may be traded for latency.
 
-计入离线教师／编程／训练成本。若新系统每次节约\(c_T-c_s>0\)，粗略摊销调用数为\(N^*=C_{offline}/(c_T-c_s)\)，其中成本必须用同一单位（时间、能耗或费用）单独计算。存储变小不代表该分母为正。
+Include offline teacher, programming, and training costs. If the new system saves \(c_T-c_s>0\) each time, the rough amortized number of calls is \(N^*=C_{offline}/(c_T-c_s)\), where the cost must be calculated separately in the same unit (time, energy consumption or expense). Just because the storage becomes smaller does not mean that the denominator is positive.
 
-## 6. 预期产出与当前状态
+## 6. Expected output and current status
 
-| 产出 | 实质内容 | 当前状态 |
+| Output | Contents | Current status |
 |---|---|---|
-| 协作收益基准 | 完整公开任务、强单Agent／多采样、多个预算点 | 新方向协议；尚未通过阶段门槛 |
-| 角色接口与轨迹集 | 角色输入／输出／权限、失败恢复、训练来源 | 需在通过门槛的工作流上构造 |
-| 参数程序库 | 论文→观测→操作→模型效果，含训练与压缩 | 已有实现及新增组合／秩／深度操作 |
-| 角色替换图谱 | 单角色、联合替换、输入分布漂移、失败传递 | 待第一阶段成立后开展 |
-| 编程者贡献实验 | 同数据同工具预算的LoRA／非LLM／LLM比较 | 尚无LLM优势证据 |
-| 部署质量—成本前沿 | 共享／副本、结构压缩、实际延迟与摊销 | 仅有既有小范围部署证据，不代表新方向完成 |
+| Collaboration Benchmark| Complete public tasks, strong single agent/multi-sampling, multiple budget points| New research protocol; not yet passed stage thresholds|
+| Role interface and trajectory set| Role input/output/permissions, failure recovery, training sources| Need to be constructed on the workflow that passes the threshold|
+| Parameter library| Paper → Observation → Operation → Model Effect, including training and compression| Existing implementations and new combination/rank/depth operations|
+| Role replacement map| Single role, joint replacement, input distribution drift, failed delivery| To be carried out after the establishment of the first phase|
+| Programmer contribution experiments| Comparison of LoRA/non-LLM/LLM with the same data and tool budget| No evidence of superiority of LLM yet|
+| Deployment Quality—Cost Frontier| Sharing/copying, structure compression, real latency and amortization| There is only existing evidence of small-scale deployment, which does not mean that the new direction has been completed.|
 
-本方向与现有四模型通用参数实验相互支撑：前者提供角色约束与端到端价值，后者提供可解释的程序效应及跨模型差异。后续应用的主要成功判据采用本文顺序，不再以先训练出三个delta代替协作有效性验证。
+This direction and the existing four-model general parameter experiments support each other: the former supplies role constraints and end-to-end value, while the latter supplies interpretable program effects and cross-model differences. The main success criteria for subsequent applications adopt the order of this article, and no longer train three deltas first instead of verifying the effectiveness of collaboration.
 
-## 7. 从参数工具到工作流：条件性的质量桥梁
+## 7. From parameter tools to workflow: conditional quality bridge
 
-序列学习中，前序输出改变后序输入，不能把单步监督误差直接解释为系统质量；这一问题是[DAgger／Ross等2011](https://proceedings.mlr.press/v15/ross11a.html)研究的出发点。以下用标准概率耦合／KL链式法则组织本项目的替换约束，不主张新定理，也不声称已获得可用数值证书。
+In sequence learning, the previous output changes the subsequent input, and the single-step supervision error cannot be directly interpreted as system quality; this issue is the starting point of [DAgger/Ross et al. 2011](https://proceedings.mlr.press/v15/ross11a.html) research. The following uses standard probabilistic coupling/KL chain rule to organize the replacement constraints of this project. We do not advocate new theorems, nor do we claim to have obtained usable numerical certificates.
 
-设工作流最多H次角色调用，历史为h_t，角色由相同调度规则r(h_t)决定。教师与替换系统具有相同问题分布、工具／环境转移和终止约定；提前终止后补吸收空动作。角色输出a_t定义在共同的消息／动作空间，而不是不同tokenizer的原生token编号上。令两系统完整轨迹分布为P_T、P_S，任务成功函数u(τ)∈[0,1]。
+Assume that the workflow has at most H role calls, the history is h_t, and the roles are determined by the same scheduling rule r(h_t). The teacher and the replacement system have the same problem distribution, tool/environment transfer and termination conventions; after early termination, pad with absorbing empty actions. The role output a_t is defined in the common message/action space, rather than the native token number of different tokenizers. Let the complete trajectory distribution of the two systems be P_T, P_S, and the task success function u(τ)∈[0,1].
 
-定义教师历史上的逐调用差异
+Define the per-call differences on teacher histories
 
 \[
 e_t(h)=\mathrm{TV}(\pi^T_{r(h)}(\cdot\mid h),\pi^S_{r(h)}(\cdot\mid h)).
 \]
 
-则可以逐调用替换条件分布，借助总变差在共同后续转移下不增加，得到
+Replace conditional distributions one call at a time. Total variation cannot increase under the same subsequent transitions, so
 
 \[
 |Q_T-Q_S|\le\mathrm{TV}(P_T,P_S)
 \le\sum_{t=1}^{H}\mathbb E_{h_t\sim P_T}e_t(h_t).
 \]
 
-证明思路是构造“前t步教师、后续学生”的混合轨迹分布，相邻分布仅一个调用不同，再用三角不等式。此界对期望最终成功概率使用H个调用误差之和；它不是累计逐步损失的H²界，也不是每个角色局部准确率相加。
+The proof constructs hybrid trajectory distributions with teacher actions for the first t steps and student actions thereafter. Adjacent distributions differ at one call; the triangle inequality gives the bound. This bound uses the sum of H calling errors on the expected final probability of success; it is not an H² bound on the cumulative step loss, nor is it the sum of each role's local accuracy.
 
-若教师条件分布相对学生绝对连续，还可用链式法则及Pinsker不等式得到另一界：
+If the teacher's conditional distribution is absolutely continuous with respect to the student's, the chain rule and Pinsker's inequality can also be used to obtain another bound:
 
 \[
 |Q_T-Q_S|\le
@@ -166,10 +166,10 @@ e_t(h)=\mathrm{TV}(\pi^T_{r(h)}(\cdot\mid h),\pi^S_{r(h)}(\cdot\mid h)).
 \mathrm{KL}(\pi^T_{r(h_t)}\|\pi^S_{r(h_t)})}.
 \]
 
-KL使用完整条件消息分布，包含终止，不等于少数参考文本的交叉熵；没有完整教师分布或可靠覆盖时，不能把SFT loss填进该式。多次调用同一角色需要按访问次数加权，角色发生次数和历史分布也可能依赖前序行为。
+KL uses a complete conditional message distribution, including termination, which is not equal to the cross-entropy of a few reference texts; without a complete teacher distribution or reliable coverage, SFT loss cannot be substituted into this formula. Multiple calls to the same role need to be weighted by the number of visits, and the number of role occurrences and historical distribution may also depend on previous behavior.
 
-第一阶段若建立了相对强单Agent的真实优势m=Q_T−Q_single>0，那么替换误差上界小于m是保留优势的一个充分条件。这解释了为什么先测协作优势：它给后续专用化提供允许损伤的参照。有限数据下的m及误差都需带不确定性，不能把点估计当作证书。
+In the first stage, if the true advantage of a relatively strong single agent is established, m=Q_T−Q_single>0, then the upper bound of the substitution error is smaller than m, which is a sufficient condition for retaining the advantage. This explains why there is an advantage in testing collaboration first: it provides a reference for allowable damage for subsequent specialization. With limited data, uncertainty in both m and the error must be assessed; point estimates are not certificates.
 
-相应的资源分配可写为选择各角色参数程序p_r，最小化C(G,{p_r})，约束估计的整工作流质量保持，并将上述差异作为保守诊断。它不要求各角色同秩或同压缩率；也不要求模仿越像教师就一定更优，因为学生可能修正教师错误。最终仍以实际替换后的任务收益与成本为主。
+A corresponding resource-allocation problem selects a parameter program p_r for each role, minimizes C(G,{p_r}), constrains estimated overall workflow quality, and uses the bound above as a conservative diagnostic. It does not require that the roles have the same rank or the same compression rate; nor does it require that the more the imitation is like the teacher, the better, because the student may correct the teacher's mistakes. In the end, the task benefits and costs after actual replacement are still the main ones.
 
-当前Wanda分数、BI、谱能量和局部重建误差都不是这些消息分布差异的直接估计。需要实测“工具改变→角色输出改变→后续上下文改变→工作流成败”的链条。单角色固定教师上下文比较、真实工作流替换和联合替换因此是三个不同实验，不能相互替代。
+Current Wanda scores, BI, spectral energy, and local reconstruction errors are not direct estimates of these message distribution differences. It is necessary to actually measure the chain of "tool change → role output change → subsequent context change → workflow success or failure". Single-role fixed-teacher context comparison, real workflow replacement, and joint replacement are therefore three different experiments and cannot be substituted for each other.

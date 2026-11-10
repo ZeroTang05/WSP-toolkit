@@ -1,4 +1,4 @@
-"""用 AtP* 的 GradDrop 预估恢复激活对输出的影响。"""
+"""Estimating the impact of restored activation on output using AtP*'s GradDrop."""
 
 from contextlib import ExitStack
 
@@ -13,7 +13,7 @@ def _tensor(output):
 
 
 def atp_star_scores(backend, snapshot, specs, prepared, pair, metric, usage):
-    """复用受扰前向图，逐层屏蔽残差分支的反向梯度。"""
+    """Reuse the perturbed forward graph and mask residual-branch gradients layer by layer during backpropagation."""
     clean_ids, corrupt_ids, query = prepared
     hidden = sorted({site["layer"] for site in specs if site["kind"] == "residual"})
     mlp = sorted({site["layer"] for site in specs if site["kind"] == "mlp_input"})
@@ -45,7 +45,7 @@ def atp_star_scores(backend, snapshot, specs, prepared, pair, metric, usage):
             handle = backend.layers[index].mlp.down_proj.register_forward_pre_hook(remember(f"mlp_{index}", pre=True))
             hooks.callback(handle.remove)
         for index, block in enumerate(backend.layers):
-            # 两条分支共同构成该层写入残差流的内容。跳连的梯度照常传递。
+            # The two branches together constitute the content written by this layer to the residual stream. Gradients for skip connections are passed as usual.
             for module in (block.self_attn, block.mlp):
                 handle = module.register_forward_hook(drop_branch(index))
                 hooks.callback(handle.remove)

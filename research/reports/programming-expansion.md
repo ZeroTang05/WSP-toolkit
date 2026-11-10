@@ -1,144 +1,144 @@
-# 模型编程内容扩展：操作、实际权重效应与实验解释
+# Expanded model programming: operations, weight effects, and experimental interpretation
 
-本文保留成文时的实验设置、结果与状态。当前项目进度见[项目状态](../../PROJECT_STATUS.md)。
+This report preserves the experimental settings, results, and status at the time of writing. For the current project progress, see [Project Status](../../PROJECT_STATUS.md).
 
-2026-11-06。本阶段按用户要求扩展研究内容，替代“只收齐现有作业、不增加方法”的旧执行优先级。下列权重几何已在真实模型上计算；任务准确率的新矩阵已经提交，尚未完成。现有训练与公开评测继续保留。
+2026-11-06. The research scope was expanded at the user’s request, replacing the earlier priority of collecting existing jobs without adding methods. The weight geometries below have been calculated on real models; a new task-accuracy matrix has been submitted and is incomplete. Existing training and public evaluations remain in place.
 
-## 1. 从单一系数搜索扩展到四类模型程序
+## 1. Expansion from single coefficient search to four-category model programming
 
-把模型状态写作 \(S=(\theta_0,\Delta,\mathcal G)\)：基础参数、任务更新、实际执行结构。原有操作主要在给定更新上选择四个深度系数，新增操作直接改变更新的组成、秩或执行深度。因此研究对象扩大为“哪种参数程序适合哪种模型”，控制器只是选择程序的一种方法。
+Write the model state as \(S=(\theta_0,\Delta,\mathcal G)\): base parameters, task updates, and actual execution structure. The original operation primarily selects four depth coefficients for a given update. The new operations directly change the update’s composition, rank, or execution depth. The research question therefore expands to which parameter program suits which model; a controller is one way to select a program.
 
-| 程序 | 文献来源 | 本次具体实现 | 要回答的问题 |
+| Program | Literature source | Implementation | Question |
 |---|---|---|---|
-| 训练后更新组合 | [Model Soups](https://arxiv.org/abs/2203.05482)、[Task Arithmetic](https://arxiv.org/abs/2212.04089) | 同一基座三个种子更新均匀平均，精确拼接有效LoRA更新 | 多个训练方向能否组合成更有效的单一更新？ |
-| 权重误差最小的更新压缩 | 经典截断SVD；以[SVD-LLM](https://arxiv.org/abs/2403.07378)为LLM压缩参照 | 用小核SVD把组合更新从rank24压到8或4 | 更新存储减少后，生成能力损失多少？ |
-| 激活加权的更新压缩 | SVD-LLM的层输出重建目标 | 固定组合模型输入分布，采集低维二阶矩，求rank8输出重建 | 校准激活能否比纯权重谱更好地保护领域能力？ |
-| 影响评分驱动的深度压缩 | [ShortGPT](https://arxiv.org/html/2403.03853v1)，公式2及层删除规则 | 领域校准上的BI；删低BI层，配随机／尾部删除对照 | 隐状态变化小是否确实意味着可删除？ |
+| Update combination after training| [Model Soups](https://arxiv.org/abs/2203.05482), [Task Arithmetic](https://arxiv.org/abs/2212.04089) | Average the effective LoRA updates from three seeds on the same base using exact factor concatenation.| Can multiple training directions be combined into a more effective single update?|
+| Update compression with minimum weight error| Classic truncated SVD; use [SVD-LLM](https://arxiv.org/abs/2403.07378) as LLM compression reference| Use small-core SVD to reduce the combined update from rank 24 to 8 or 4| How much generation capacity is lost when update storage is reduced?|
+| Activation-weighted update compression| Layer output reconstruction target of SVD-LLM| Fix the combined model’s input distribution, collect low-dimensional second moments, and obtain a rank8 output reconstruction.| Can calibrated activations preserve domain capability better than the weight spectrum alone?|
+| Block influence score-driven depth compression| [ShortGPT](https://arxiv.org/html/2403.03853v1), formula 2 and layer deletion rules| BI on domain calibration; delete low-BI layers, with random/tail deletion control| Does a small hidden-state change mean the layer can be deleted?|
 
-组合是参数更新的精确代数实现，不声称复现Model Soups原始视觉实验。SVD只压缩delta，没有压缩整个基座；激活方法没有SVD-LLM的逐层恢复，明确称“局部输出重建适配”。BI采用变长GSM训练视图，每例先平均token再平均例；这是ShortGPT的领域／采样适配。
+Combination implements parameter updates with exact algebra; it does not claim to reproduce the original Model Soups vision experiments. SVD compresses only the delta, not the full base model. The activation method lacks SVD-LLM’s layerwise recovery and is explicitly called a “local output reconstruction adaptation.” BI uses variable-length GSM training views, averaging over tokens first and then over examples; this adapts ShortGPT’s domain and sampling.
 
-实现：`src/delta_programming.py`、`src/depth_programming.py`、`src/programming_probe.py`、`src/programming_effects.py`。工程执行入口不是研究贡献本身。
+Implementation: `src/delta_programming.py`, `src/depth_programming.py`, `src/programming_probe.py`, `src/programming_effects.py`. The engineering interface is not itself the research contribution.
 
-## 2. 从论文到工具：操作语义与局部性质
+## 2. From paper to tool: operational semantics and local properties
 
-### 2.1 更新组合应发生在BA上
+### 2.1 Update combination should occur on BA
 
-对有效更新 \(D_i=B_iA_i\)，训练时的\(\alpha_i/r_i\)与系数先吸收到\(B_i\)。令
+For effective updates \(D_i=B_iA_i\), first absorb the training scale \(\alpha_i/r_i\) and coefficients into \(B_i\). Define
 
 \[
 A_*=[A_1^T,\ldots,A_m^T]^T,\qquad B_*=[w_1B_1,\ldots,w_mB_m],
 \]
 
-则\(B_*A_*=\sum_iw_iD_i\)，表示秩上界为\(\sum_i r_i\)。均匀权重下，\(\theta_0+\frac1m\sum_i D_i\)就是同基座微调权重的均值。一般权重和不为1时，应称任务更新线性组合。
+Then \(B_*A_*=\sum_iw_iD_i\), with rank at most \(\sum_i r_i\). Under uniform weights, \(\theta_0+\frac1m\sum_i D_i\) is the mean of the fine-tuned weights from the same base. When weights do not sum to 1, the result is a linear combination of task updates.
 
-不能分别平均A和B：这样产生交叉项，也依赖LoRA因子的任意基变换。新的组合器只对有效更新做算术。浮点执行存在舍入差异，不把实数恒等式解释为所有BF16生成逐字相同。
+Averaging A and B separately creates cross terms and depends on arbitrary basis transformations of the LoRA factors. The new combiner performs arithmetic on effective updates. There are rounding differences in floating-point implementations, so the real-number identity does not imply bitwise-identical BF16 execution.
 
-### 2.2 用小核得到最优权重近似
+### 2.2 Use small core to obtain optimal weight approximation
 
-对\(A^T=Q_aR_a\)、\(B=Q_bR_b\)，只需分解\(R_bR_a^T\)，即可获得\(BA\)的非零奇异值及左右子空间。设截断结果为\(D_k\)，则
+For \(A^T=Q_aR_a\) and \(B=Q_bR_b\), decomposing \(R_bR_a^T\) yields the nonzero singular values and left and right subspaces of \(BA\). Let the truncated result be \(D_k\):
 
 \[
 \min_{\mathrm{rank}(M)\le k}\|D-M\|_F^2=\sum_{j>k}\sigma_j(D)^2.
 \]
 
-这保证局部权重近似最优。对单层固定输入还有\(\|(D-D_k)x\|_2\le\sigma_{k+1}\|x\|_2\)，但没有自动得到整网生成准确率界。输出token会离散变化，后续层又会改变输入分布。
+This gives the optimal local weight approximation. For fixed inputs to one layer, \(\|(D-D_k)x\|_2\le\sigma_{k+1}\|x\|_2\), but this does not automatically bound accuracy for whole-network generation. Output tokens change discretely, and subsequent layers alter the input distribution.
 
-### 2.3 激活目标：低维二阶矩而非全输入协方差
+### 2.3 Activation target: low-dimensional second-order moment rather than full input covariance
 
-令\(z=Ax\)、\(C=\mathbb E[zz^T]\)。这里C是未中心化二阶矩，不减均值。目标为
+Let \(z=Ax\), \(C=\mathbb E[zz^T]\). Here C is the uncentered second moment; the mean is not subtracted. The goal is
 
 \[
 \min_{\mathrm{rank}(M)\le k}\mathbb E\|BAx-Mx\|_2^2.
 \]
 
-取\(BC^{1/2}\)的前k个左奇异向量U，构造\(M=UU^TBA\)。原输出\(y=BAx\)的二阶矩为\(BCB^T\)，投影到其前k特征子空间达到最小重建误差；任意rank-k线性预测的输出也受限在至多k维子空间，因此不能低于这一误差。误差为\(\sum_{j>k}\sigma_j(BC^{1/2})^2\)。无需求C逆，允许校准分布退化。
+Take the top k left singular vectors U of \(BC^{1/2}\) and construct \(M=UU^TBA\). The original output \(y=BAx\) has second moment \(BCB^T\); projection onto its top k eigenspace achieves the minimum reconstruction error. Any rank-k linear predictor also has an output subspace of at most k dimensions and cannot achieve a lower error. The error is \(\sum_{j>k}\sigma_j(BC^{1/2})^2\). No inverse of C is required, so degenerate calibration distributions are allowed.
 
-该结论只适用于固定源模型激活与声明的校准经验分布。全模型同时换成压缩更新后，后层输入发生变化；这一实现没有逐层重新估计和恢复步骤。应检验误差向任务行为的传递，而不是以局部最优替代全局评测。
+This conclusion holds only for fixed source-model activations under the declared empirical calibration distribution. When compressed updates are applied throughout the model at once, inputs to later layers change; this implementation has no layerwise re-estimation or recovery. The transfer of errors to task behavior should be examined rather than replacing global evaluation with local optimality.
 
-### 2.4 观测评分与因果删除分开测量
+### 2.4 Observation scoring and causal deletion are measured separately
 
-\(BI_l=1-\mathbb E\cos(h_l,h_{l+1})\)。低BI只说明残差块输入输出方向接近；它不直接度量答案损失，也可能忽略幅值和少数关键token。
+\(BI_l=1-\mathbb E\cos(h_l,h_{l+1})\). Low BI only indicates that the input and output directions of the residual block are close; it does not directly measure the answer loss, and may also ignore the amplitude and a few key tokens.
 
-因此另测每一层的删除响应\(\delta_l=R(f_{-l})-R(f)\)，分别用数学参考答案风险与ARC保护CE。比较BI与\(\delta_l\)的Spearman相关、深度位置和异常层；它是针对当前模型／输入的干预结果。单层损伤也不能直接相加推断多层删除，因为存在交互。
+The deletion response \(\delta_l=R(f_{-l})-R(f)\) is therefore measured separately for each layer, using math reference-answer risk and ARC retention CE, respectively. Compare BI with \(\delta_l\) by Spearman correlation, depth, and anomalous layers; these are intervention results for the current model and inputs. Single-layer damage cannot be directly added to infer multi-layer deletions because of interactions.
 
-## 3. 已完成：12个训练更新的真实跨模型分析
+## 3. Completed: Real cross-model analysis of 12 training updates
 
-四个模型均使用各自基座上完成的3个GSM训练种子（11/22/33），q/v目标rank8。只在同一个模型的坐标内比较更新余弦；跨模型比较无量纲谱与归一化深度分布，不比较不同架构原始矩阵坐标。
+All four models use 3 GSM training seeds (11/22/33), trained on their respective bases with q/v target rank8. Compare update cosines only within the coordinates of the same model; compare dimensionless spectra and normalized depth distributions across models, and do not compare the original matrix coordinates of different architectures.
 
-| 模型 | 种子间平均余弦 | 单方向前4奇异值能量 | 后1/4层更新能量 | 组合→rank8能量 | 组合→rank4能量 | rank4因子MiB |
+| Model| average cosine between seeds| Top 4 singular-value energy in one update| Update energy in the final quarter of layers| Combination→rank8 energy| Combination→rank4 energy| rank4 factor MiB|
 |---|---:|---:|---:|---:|---:|---:|
 | Qwen3-0.6B | 0.125 | 93.24% | 35.53% | 92.81% | 85.02% | 2.188 |
 | Qwen3-1.7B | 0.294 | 96.98% | 41.04% | 97.57% | 94.31% | 3.062 |
 | SmolLM2-360M | 0.556 | 98.83% | 48.67% | 99.35% | 98.34% | 1.562 |
 | SmolLM2-1.7B | 0.408 | 98.44% | 36.42% | 98.79% | 96.93% | 3.000 |
 
-“单方向前4”先在每个目标矩阵内取前4，再聚合能量，最后平均3种子；不是整模型只剩4个方向。“组合→rankk”是组合后每模块截断的总能量保留率，按保存的FP32因子范数计算，存在微小舍入。MiB只含FP32因子张量，不含manifest、公共基座和运行缓存。原始证据在`artifacts/public/programming-expansion-v1/`，可用`src/analyze_programming_geometry.py`重新生成`analysis.json`。
+“Top 4 in one direction” takes the top 4 in each target matrix, aggregates their energy, and then averages over 3 seeds; it does not mean the entire model has only 4 directions. “Combination→rankk” is the aggregate energy retained after truncating each combined module, calculated from the saved FP32 factor norms with slight rounding. MiB includes only FP32 factor tensors, excluding the manifest, shared base, and run cache. The original evidence is in `artifacts/public/programming-expansion-v1/`, and `src/analyze_programming_geometry.py` can be used to regenerate `analysis.json`.
 
-可以形成四个实质分析：
+The results support four observations:
 
-1. **规模趋势依赖系列。** Qwen增大时种子方向更一致；SmolLM2相反。当前事实来自这四个检查点与这一训练配方，不能泛化成所有模型的规模律。
-2. **组合会增加压缩难度。** Qwen0.6单方向前4平均保留93.24%能量，而三方向组合前4仅85.02%。各方向分别低秩，不保证组合共享同一个低维子空间。
-3. **深度能量也没有统一规模趋势。** Qwen后1/4层占比随规模35.53%→41.04%，Smol则48.67%→36.42%。这给深度系数干预提供观测依据，但高能量不等于高因果重要性。
-4. **权重均值同时改变方向与幅度。** 组合范数／seed11范数依次0.645、0.731、0.841、0.784。必须加入同范数单方向对照，否则组合的收益可能部分来自减弱原过强更新。设所有源范数相等、平均两两余弦为c，则均值的范数比是\(\sqrt{(1+2c)/3}\)；实际不完全等范数，因此该式只用于解释，不替代实际计算。
+1. **Scale trends depend on model family.** Seed directions become more consistent as Qwen scales up; SmolLM2 shows the opposite. These four checkpoints and this training recipe do not establish a scaling law for all models.
+2. **Combination increases compression difficulty.** Qwen0.6's top 4 in one direction retain an average of 93.24% of energy, while the top 4 in three directions only retain 85.02%. Each direction is low-rank, but their combination need not share a single low-dimensional subspace.
+3. **There is also no uniform scale trend in depth energy.** The proportion in the last 1/4 of layers changes with scale from 35.53% to 41.04% for Qwen and from 48.67% to 36.42% for Smol. This provides an observational basis for deep coefficient intervention, but high energy does not equal high causal importance.
+4. **The weighted mean changes both direction and magnitude.** The combined norm/seed11 norm is 0.645, 0.731, 0.841, and 0.784. A same-norm single-direction control is needed: part of the combination’s gain may come from weakening an overly strong original update. Assume that all source norms are equal and the average pairwise cosine is c, then the norm ratio of the mean is \(\sqrt{(1+2c)/3}\); the actual norms are not exactly equal, so this formula is only used for explanation and does not replace the actual calculation.
 
-三对余弦共享三个源更新，不能当作3个独立统计重复。一个三种子均值组合也不是3次独立组合实验。当前几何只描述这12个更新，不能由98%能量保留直接宣称98%能力保留。
+Three pairs of cosines share three source updates and cannot be treated as three independent statistical repetitions. A three-seed mean combination is not three independent combination experiments. The current geometry only describes these 12 updates and cannot directly claim 98% capability retention from 98% energy retention.
 
-## 4. 模型编程效果：已有质量证据与新增完整矩阵
+## 4. Model programming effect: existing quality evidence and new complete matrix
 
-已有统一batch32、相同非思考GSM协议下，Qwen0.6原模型485/1319，标准LoRA532，固定全局系数0.8为590，随机深度系数为589。固定与随机仅差1题，但分别改善／退化的题目有69／70，共139题正误改变。因此相同总分不表示程序行为相同；逐题迁移类型应与总分共同报告。
+Under the same non-thinking GSM batch32 protocol, Qwen0.6 scored 485/1319 for the base model, 532 for standard LoRA, 590 for a fixed global coefficient of 0.8, and 589 for random depth coefficients. Fixed and random differ by one net question, but 69 answers improved and 70 degraded, so correctness differs on 139 questions. Similar overall scores do not establish identical behavior; per-question transitions should accompany the aggregate score.
 
-固定0.8在ARC-C为351/1172，原模型363；HellaSwag为4443/10042，原模型4217。领域提升与保护任务变化方向不同，不能把开发CE约束称为一般能力保持。上述是完整公开分区的单种子实测，不是新组合／压缩程序已经有效的证据。
+Fixed 0.8 scored 351/1172 on ARC-C versus 363 for the base, and 4443/10042 on HellaSwag versus 4217 for the base. Domain improvement and retention-task changes differ in direction; satisfying the development cross-entropy constraint does not establish general capability retention. The above is a single seed measurement of a complete public partition, and is not evidence that the new combination/compression process is effective.
 
-本轮新增完整成绩：单轴探测（旧名greedy）564/1319=42.76%，BO为517/1319=39.20%。BO开发风险0.31513，低于fixed的0.31848，却比fixed测试准确率低5.53个百分点；题目配对bootstrap区间为[-7.73,-3.49]个百分点，70题改善、143题退化。与标准LoRA差-1.14个百分点，区间[-3.11,0.76]，不能据此确认其总体弱于LoRA。单轴探测的开发风险0.59424更差，却在该测试的点估计高于BO，再次展示代理与生成质量排序可能不一致。
+The new complete results are 564/1319=42.76% for single-axis detection (formerly called greedy) and 517/1319=39.20% for BO. BO’s development risk is 0.31513, lower than fixed’s 0.31848, but its test accuracy is 5.53 percentage points below fixed; the paired-question bootstrap interval is [-7.73,-3.49] percentage points, with 70 questions improved and 143 questions degraded. The difference from standard LoRA is -1.14 percentage points, with an interval of [-3.11, 0.76]. This cannot be used to confirm that it is generally weaker than LoRA. Single-axis detection has a worse development risk of 0.59424, yet a higher test point estimate than BO. This again shows that proxy and generation-quality rankings can differ.
 
-这些是同一冻结源码／batch／模型及完整1319题的比较，区间只含题目不确定性，未做多重比较校正，也不表示跨训练种子规律。新证据和原始预测在`artifacts/public/programming-expansion-v1/existing-effects`，分析脚本`src/analyze_policy_effects.py`。它支持在应用角色替换中加入端到端指标，不能据此在测试上重新挑选当前程序。
+These comparisons use the same frozen source, batch, and model on all 1319 questions. The intervals reflect question uncertainty only, are not corrected for multiple comparisons, and do not describe variation across training seeds. New evidence and original predictions are in `artifacts/public/programming-expansion-v1/existing-effects`; the analysis script is `src/analyze_policy_effects.py`. The results support adding end-to-end metrics to applied role replacement; they cannot be used to reselect the current program on the test set.
 
-### 新增：参数程序的输出行为与分组效果
+### New: Output behavior and grouping effects of parameter programs
 
-继续分析同一完整分区的原始生成，而不改变任何计划。下表“计算标记”为生成中是否含`<<`，它只测量格式；参考步骤分组按官方参考解答中`<<`的数量，不能当作真实认知难度。
+The analysis continues on the original generations from the same complete split, without changing any plans. The "calculation mark" in the following table indicates whether `<<` is included in the generation. This measures format only. Reference-step groups use the number of `<<` markers in the official solution and do not measure actual cognitive difficulty.
 
-| 程序 | 全部正确/1319 | 输出字符中位数 | 生成计算标记题数 | 参考0—2步正确/440 | 参考3—4步正确/654 | 参考5+步正确/225 |
+| program| Correct / 1319| Median number of output characters| Questions with generated calculation markers| Reference 0–2 steps, correct / 440| Reference 3–4 steps, correct / 654| Reference 5+ steps, correct / 225|
 |---|---:|---:|---:|---:|---:|---:|
-| 原模型 | 485 | 658 | 0 | 201 | 231 | 53 |
-| 标准LoRA | 532 | 273 | 1259 | 242 | 243 | 47 |
-| 固定0.8 | 590 | 269 | 1134 | 269 | 273 | 48 |
-| 随机深度系数 | 589 | 272 | 1208 | 269 | 273 | 47 |
-| 仅后1/4深度组×0.95 | 564 | 608 | 11 | 229 | 267 | 68 |
-| BO选择 | 517 | 267 | 1250 | 241 | 237 | 39 |
+| base model| 485 | 658 | 0 | 201 | 231 | 53 |
+| StandardLoRA| 532 | 273 | 1259 | 242 | 243 | 47 |
+| Fixed 0.8| 590 | 269 | 1134 | 269 | 273 | 48 |
+| random depth coefficient| 589 | 272 | 1208 | 269 | 273 | 47 |
+| Final 1/4 depth group only × 0.95| 564 | 608 | 11 | 229 | 267 | 68 |
+| BO selection| 517 | 267 | 1250 | 241 | 237 | 39 |
 
-这给出三个额外观察。首先，标准更新和多数全深度程序明显改变输出格式与长度，而只激活后1/4组的更新仍更接近原生输出风格；该干预在保持较少计算标记的同时仍提高总体点估计。其次，字符中位数几乎相同的fixed与BO仍相差73题，不能以简短输出或格式模仿解释全部质量变化。再次，总分最佳的fixed在“参考5+步”组低于仅后1/4更新（48对68），提示平均效应掩盖条件差异。
+This gives three additional observations. First, standard updates and most full-depth programs significantly change the output format and length, while the final-quarter-only update remains closer to the base model output style; this intervention retains fewer calculation markers while still improving the overall point estimate. Second, fixed and BO have nearly identical median character counts but differ by 73 correct answers, so short outputs or format imitation cannot explain all quality changes. Third, fixed has the best overall score but scores below the final-quarter-only update on the “reference 5+ steps” group (48 vs. 68), suggesting that the average masks differences across conditions.
 
-这些均为单种子事后描述，未做分组多重检验；参考解答分组使用评测标签，不能据此构造可部署路由或重新选择当前候选。字符长度不是token数，更不是实测加速。可复跑`src/analyze_answer_behaviour.py`，证据`artifacts/public/programming-expansion-v1/answer-behaviour.json`。后续角色编程应分别观察接口风格、角色能力与工作流结果，而不是把任一指标替代其余两者。
+These are post-hoc descriptions from one seed without multiple-comparison correction across groups. The reference-answer groups use evaluation labels and cannot be used to construct deployable routing or reselect current candidates. Character length is neither token count nor measured speedup. Rerun with `src/analyze_answer_behaviour.py`; evidence is in `artifacts/public/programming-expansion-v1/answer-behaviour.json`. Subsequent role programming should observe interface style, role capabilities and workflow results separately, rather than replacing any one indicator with the other two.
 
-补充配对计数：“后1/4更新”相对fixed，在参考0—2步组改善66／退化106题，净-9.09个百分点，描述性题目bootstrap区间[-14.77,-3.18]；参考5+步组改善46／退化26题，净+8.89个百分点，区间[1.33,16.44]。组别为事后选择，区间未做多重比较校正，不据此作确认性显著性或普遍机制主张。BO在三个组的点估计均低于fixed，表明它的总体损伤并非只集中于最高参考步数组。
+Supplementary paired counts compare the “last 1/4 update” with fixed. In the reference 0–2 step group, 66 answers improved and 106 degraded, a net -9.09 percentage points with a descriptive question-bootstrap interval of [-14.77, -3.18]. In the reference 5+ step group, 46 improved and 26 degraded, a net +8.89 percentage points with interval [1.33, 16.44]. The groups were selected post hoc, and the intervals were not corrected for multiple comparisons. No confirmatory significance or universal mechanism claims are made based on this. The point estimates of BO in the three groups are all lower than the fixed setting, indicating that its overall damage is not concentrated only in the highest reference step group.
 
-新增每模型11个条件：native、seed11标准更新、三方向均值、Frobenius rank8/rank4、激活rank8、同范数seed11，以及BI约10%/20%、随机约10%、尾部约10%的层删除。四模型共44个状态，每状态完整GSM8K 1319、ARC-C 1172、HellaSwag 10042，共132个任务结果、551452个状态×题目评分。
+The new matrix adds 11 conditions for each model: native, seed11 standard update, three-way mean, Frobenius rank8/rank4, activation rank8, same norm seed11, and layer deletion by BI at about 10%/20%, random deletion at about 10%, and tail deletion at about 10%. The four models have 44 states in total. Each state is evaluated on complete GSM8K 1319, ARC-C 1172, and HellaSwag 10042, giving 132 task results and 551,452 state × question scores.
 
-新矩阵统一使用预加载模型的HFLM执行路径，各状态独立响应缓存；native和标准更新也在该路径下重新测量。不能把新路径干预与旧路径基线直接相减并宣称严格配对。基座BF16、SDPA、max_length2048、生成上限512，GSM batch32、选择题batch8，种子20261106。
+The new matrix uses the HFLM execution path with preloaded models and a separate response cache for each state; the base and standard update are also remeasured under this path. One cannot directly subtract the new path intervention from the old path baseline and claim a strict pairing. Settings are base BF16, SDPA, max_length2048, generation limit 512, GSM batch32, multiple-choice batch8, and seed 20261106.
 
-程序构造仅用训练派生calibration128；逐层干预用development64与ARC validation32。没有用官方测试挑选秩、删除策略或组合权重。完整公开测试是确认阶段。
+Program construction uses only 128 training-derived calibration examples; layerwise intervention uses 64 development and 32 ARC validation examples. No official tests were used to pick ranks, deletion strategies, or combination weights. The full public test is the confirmation phase.
 
-作业`job-mw53jetr-d779`已冻结代码并运行：四模型CPU组合阶段完成，随后依次生成四模型BI／逐层响应／激活矩，再进入完整质量矩阵。GPU0沿用统一锁；等待不构成结果。
+Job `job-mw53jetr-d779` has frozen the code and is running. The four-model CPU combination phase is complete; next it generates BI, layerwise responses, and activation moments for the four models in sequence, then runs the full quality matrix. GPU0 uses the shared lock; waiting is not a result.
 
-## 5. 分析应如何解释正负结果
+## 5. How should the analysis interpret positive and negative results?
 
-| 对照 | 若改善 | 若未改善或变差 |
+| control| If improved| If it does not improve or becomes worse|
 |---|---|---|
-| 组合 vs seed11 | 有组合候选收益，仍须结合其他源单独成绩 | 均值可能跨出低损失区域，或源方向不互补 |
-| 组合 vs 同范数seed11 | 支持方向组成有额外价值 | 收益可能主要由幅度调整解释；未显著不等于等效 |
-| 激活rank8 vs Frobenius rank8 | 支持局部输出目标向任务保留传递 | 校准覆盖不足或同时压缩的分布漂移可能占主导 |
-| rank4 vs rank8 vs 未压缩组合 | 得到更新存储／能力的Pareto关系 | 说明谱能量不能替代任务收益，定位敏感模块 |
-| BI删除 vs 同预算随机／尾删 | 支持评分的选择价值 | BI可能只描述相似性，不能可靠识别可删层 |
-| 单层BI与删除损伤相关 | 支持当前分布上评分的解释能力 | 研究高BI低损伤、低BI高损伤的反例与token位置 |
+| combination vs seed11| A combined candidate shows a gain; also consider the individual results of the other source updates.| The mean may be outside the low-loss zone, or the source directions may not be complementary.|
+| Combination vs same norm seed11| Supports additional value from combining directions| Gains may be primarily explained by magnitude adjustments; a nonsignificant difference does not establish equivalence|
+| Activation-weighted rank 8 vs Frobenius rank8| Supports transfer from the local output objective to task retention| Insufficient calibration coverage or distribution drift from simultaneous compression may dominate|
+| rank4 vs rank8 vs uncompressed combination| Establish the Pareto relationship between update storage and capability| Spectral energy cannot stand in for task gains; locate sensitive modules.|
+| BI deletion vs same budget random/tail deletion| Support the selection value of the score| BI may only describe similarities and cannot reliably identify deletable layers.|
+| Single-layer BI associated with deletion damage| Support the score’s interpretability on the current distribution| Study the counterexamples and token positions of high BI and low damage, low BI and high damage|
 
-配对题目差分和改善／退化数是主分析；单组合暂不报告跨种子置信区间。由测试失败提出的新策略，应命名为后续探索，不能回头改当前确认规则。
+Paired question differences and improvement/degradation numbers are the main analysis; cross-seed confidence intervals are not reported for single combinations. A new strategy proposed after a test failure must be labeled follow-up exploration; the current confirmation rules cannot be changed retrospectively.
 
-## 6. 应用与效率：两种不同的压缩产出
+## 6. Application and efficiency: two different compression outputs
 
-对K个角色，公共基座B与各更新D的存储由\(K(B+D)\)变为\(B+KD\)。本次rank压缩进一步减少D，rank24→8为因子张量的1/3，→4为1/6。它与共享基座是互补操作，适用于后续FinQA角色更新，但本次GSM更新的效果不能转移声称为FinQA收益。
+For K roles, the storage of the common base B and each update D changes from \(K(B+D)\) to \(B+KD\). Rank compression further reduces D: rank24 → 8 uses 1/3 of the factor tensor storage, and → 4 uses 1/6. This complements base sharing and is applicable to later FinQA role updates, but the effects of this GSM update cannot be claimed as FinQA benefits.
 
-层删除改变执行图，能够减少执行块；当前可恢复实验上下文仍持有原层引用，因此不以其CUDA分配量作为独立压缩模型内存。正式部署产出还需要物化／独立加载、相同长度的prefill/decode计时与质量约束。已有MLP结构剪枝路线继续提供另一种压缩维度。
+Layer deletion changes the execution graph and can reduce executed blocks. The current reversible experiment context retains references to the original layers, so its CUDA allocation is not used as the memory footprint of an independently compressed model. A deployment artifact also requires materialization or independent loading, matched-length prefill/decode timing, and quality constraints. Existing MLP structure pruning routes continue to provide another compression dimension.
 
-当前明确产出：四类论文驱动操作；局部代数性质与边界；12个源更新／16个实际编译程序的权重证据；四模型完整效果矩阵执行；逐层观测—干预响应图执行。领域保真、实际延迟提升、LLM选择优势仍是待检验的研究问题。
+Current outputs are four types of paper-driven operations; local algebraic properties and boundaries; weight evidence from 12 source updates and 16 actual compiled programs; execution of the complete four-model effect matrix; and execution of the layerwise observation–intervention response analysis. Domain fidelity, actual latency improvement, and LLM selection advantages remain to be tested.
 
-2026-11-07更新：四模型BI、激活矩与112项单层删除均已完成，原始记录已下载并独立重算相关。见[layer-observation-study.md](layer-observation-study.md)及配套图；完整生成矩阵仍在运行，不将开发代理结果替代公开任务确认。
+Update on 2026-11-07: The four-model BI, activation moments and 112 single-layer deletions have been completed, and the original records have been downloaded and the correlations independently recomputed. See [layer-observation-study.md](layer-observation-study.md) and supporting diagram; the full generation matrix is ​​still running, and development proxy results are not substituted for public task confirmation.

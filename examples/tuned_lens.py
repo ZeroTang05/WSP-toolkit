@@ -1,4 +1,4 @@
-"""用真实模型激活拟合调优透镜，并在不同文本上读出预测。"""
+"""Fit a tuned lens on real model activations and read predictions on different texts."""
 
 import argparse
 from itertools import islice
@@ -11,7 +11,7 @@ from weight_programming import open_inspection
 
 
 def main(model, dataset):
-    """在一个工作区保存校准变换，并通过共用工具入口读出。"""
+    """Save a calibration transform in a workspace and read predictions through the shared tool interface."""
     with dataset.open(encoding="utf-8") as stream:
         texts = [json.loads(line)["problem"] for line in islice(stream, 28)]
     with TemporaryDirectory(prefix="wsp-tuned-lens-") as workspace, open_inspection(model, workspace) as tools:

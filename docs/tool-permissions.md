@@ -1,34 +1,34 @@
-# 工具的内在逻辑，还需要方法假设与权限这两个维度
+# Tool logic, method assumptions, and permissions
 
-本地 MCP 与 Python 共用权限设置。结构导出需要编辑授权，Taylor 选择额外需要梯度授权和宿主登记的训练数据。`train_update` 需要单独的训练授权。将训练更新物化为权重补丁时，同时检查编辑授权。 [调用与安装](mcp-tools.md#training-and-structural-compression)
+Local MCP and Python share permission settings. Structural export requires edit permission; Taylor selection also requires gradient permission and host-registered training data. `train_update` requires separate training permission. Materializing a training update as a weight patch also checks edit permission. [Usage and installation](mcp-tools.md#training-and-structural-compression)
 
-`execute_python` 需要宿主在 Linux 上显式开放。每个会话绑定一个模型版本，产物可以申请转成补丁。`edit_facts` 需要编辑与梯度权限，并由宿主登记独立的 EasyEdit 环境。它返回补丁 ID，由调用方决定何时生成候选版本。 [工具用法](mcp-tools.md)
+The host must explicitly enable `execute_python` on Linux. Each session binds one model version, and artifacts can be proposed as patches. `edit_facts` requires edit and gradient permissions and a host-registered separate EasyEdit environment. It returns a patch ID; the caller decides when to create a candidate version. [Tool usage](mcp-tools.md)
 
-2026-11-07。工具按“观测—诊断—适配／组合—压缩—补偿—确认”组织，但同属一个库不代表可以在任一实验中任意混用。
+2026-11-07. Tools are organized around observation, diagnosis, adaptation and combination, compression, compensation, and confirmation. Each method has its own assumptions and experimental permissions.
 
-| 工具／方法 | 解决的问题 | 需要的证据／假设 | 权限与成本 |
+| Tool or method | Problem addressed | Evidence or assumptions | Permissions and cost |
 |---|---|---|---|
-| 权重读写、矩阵分析、方向投影 | 观察并提交具体参数操作 | 同一基座坐标、明确作用位置、行为假设 | 可用于原作直接编程；受保护参数及写入规则约束 |
-| 预算生成与teacher-forced | 检查行为、概率和内部状态 | 来源固定的练习集、冻结执行精度／采样 | 原作接口；请求预算与实际前向／token成本分别记账 |
-| 配对activation patching | 核对某个激活位置是否改变指定输出 | 明确clean/corrupt对、位置对齐、目标与对比指标 | 机制诊断扩展；临时干预不是持久权重修改，**不进入原作权限轨道** |
-| Wanda／BI等观测评分 | 快速提出删除候选 | 校准分布、评分假设与实际删除结果 | 观测不能代替因果确认；实现适配与论文原方法分别说明 |
-| SparseGPT补偿 | 减少删除造成的局部输出损伤 | 输入二阶统计、阻尼、稀疏模式、独立检查 | 无SGD不等于没有拟合目标；逐列重建属于单独压缩／补偿轨道，不默认算原作式独立发现 |
-| LoRA／SFT、剪后恢复 | 建立角色能力或恢复损伤 | 训练材料、损失、训练预算及普通后训练对照 | 明确允许训练的轨道；方向训练成本不能藏在“搜索无训练”表述里 |
-| 更新组合、低秩近似 | 调整已有方向或减少表示成本 | 相同基座／坐标、更新来源与局部近似目标 | 有训练来源的方向必须追溯；几何最优不保证任务最优 |
-| DPO等偏好优化 | 改善有可靠偏好定义的行为 | 可信偏好对、参考分布及目标 | 数据与训练条件满足后才接入，不能把任意概率提升称为DPO |
+| Weight reading and writing, matrix analysis, direction projection | Observe and submit specific parameter operations | Same base coordinates, explicit location, behavioral hypothesis | Available for direct programming under the original protocol, subject to protected-parameter and write rules |
+| Budgeted generation and teacher-forced execution | Inspect behavior, probabilities, and internal states | Practice set with fixed provenance; frozen precision and sampling | Original interface; request budget and actual forward/token cost are accounted separately |
+| Paired activation patching | Test whether an activation site changes a specified output | Explicit clean/corrupt pairs, aligned positions, target and contrast metrics | Mechanistic diagnosis extension. Temporary interventions do not modify weights persistently and do not enter the original protocol’s permission track. |
+| Wanda, BI, and similar observation scores | Quickly propose removal candidates | Calibration distribution, scoring assumptions, and actual removal results | Observation requires causal confirmation; adaptations and original published methods are described separately |
+| SparseGPT compensation | Reduce local output damage caused by removal | Second-order input statistics, damping, sparsity pattern, and independent checks | Absence of SGD does not eliminate a fitting objective; column-wise reconstruction belongs to a separate compression/compensation track and is not automatically classified as independent discovery under the original protocol |
+| LoRA/SFT and post-pruning recovery | Establish role capabilities or recover from damage | Training material, loss, training budget, and ordinary post-training controls | Explicit training-enabled track; direction training costs must be reported in no-training search claims |
+| Update combination and low-rank approximation | Adjust existing directions or reduce representation cost | Same base and coordinates, update provenance, and local approximation objective | Training-derived directions require provenance; geometric optimality does not guarantee task optimality |
+| DPO and other preference optimization | Improve behavior with a reliable preference definition | Reliable preference pairs, reference distribution, and objective | Requires appropriate data and training conditions; arbitrary probability gains do not establish DPO |
 
-来源见[方法依据](../research/methods/method-foundations.md)、[SparseGPT实做](../research/reports/reconstruction-study.md)、[配对激活方法](https://arxiv.org/abs/2309.16042v2)及[MIT原始协议](../research/references/mit-wsp/exp8_prompt.txt)。方法出处支持算法动机，效果仍需在当前模型和任务上建立。
+Sources: [method foundations](../research/methods/method-foundations.md), [SparseGPT implementation](../research/reports/reconstruction-study.md), [paired activation method](https://arxiv.org/abs/2309.16042v2), and [original MIT protocol](../research/references/mit-wsp/exp8_prompt.txt). Method sources support the algorithms' motivation; effects must still be established on the current model and task.
 
-## 为什么配对激活工具必须单列
+## Why paired activation tools have a separate track
 
-权重编辑问的是“这个持久参数变化改善了吗”；激活替换问的是“在这个反事实输入对中，指定位置的状态能改变什么”。后者有助于定位前者的候选位置，但并不自动给出该如何改权重。一个位置的激活能恢复输出，也不能证明那里独占某个知识或存在可独立删除的电路。
+Weight editing asks whether a persistent parameter change improved behavior. Activation patching asks what a state at a specified site can change in a counterfactual input pair. The latter can help locate candidate sites for the former but does not automatically specify a weight edit. Restoring an output through a site's activation does not establish that knowledge resides exclusively there or that an independently removable circuit exists.
 
-新`ActivationPatchingStudy`执行clean、corrupt、patched三次实际前向，报告logit difference、目标概率、目标log-prob及各自变化。使用同token长度的输入对和显式位置，不猜测对齐；支持原始残差和down_proj输入。恢复比值不截断到[0,1]，分母接近零返回null，clean本身更差时标记其恢复解释不成立。
+`ActivationPatchingStudy` performs three real forward passes: clean, corrupt, and patched. It reports logit difference, target probability, target log-probability, and their changes. It uses equal-token-length input pairs and explicit positions, without guessing alignment; raw residuals and down_proj inputs are supported. Restoration ratios are not clipped to [0,1]; a near-zero denominator returns null, and a worse clean result is flagged as invalidating the restoration interpretation.
 
-权限隔离是实验语义，不是宣称Python能证明任意算法合规。原作式`dispatch_tool`只暴露持久CPU分析与受预算前向，不包含激活干预接口；训练、迭代经验损失拟合和模拟网络仍需审阅程序轨迹。扩展轨道可以开展重建、梯度诊断或后训练，但须独立命名、计费和比较，不能拿它的收益替代原作无训练结果。
+Permission separation expresses experimental semantics; Python cannot establish compliance of an arbitrary algorithm. The original-style `dispatch_tool` exposes persistent CPU analysis and budgeted forward passes without an activation-intervention interface. Training, iterative empirical-loss fitting, and simulated networks still require review of the program trace. Extension tracks may use reconstruction, gradient diagnosis, or post-training, with separate names, accounting, and comparisons; their gains cannot stand in for original no-training results.
 
-## 交给LLM的接口
+## Interface for an LLM
 
-新增`tool_schemas(session)`从实际后端和预算生成两项可调用schema：`execute_python`与`model_forward`。例如Qwen3.5只将3／7／11／15／19／23列为合法普通注意力层，残差坐标允许0到24。`dispatch_tool`调用真实ProgrammingSession方法，拒绝未知工具及额外Python执行参数。数量、token和返回尺寸的耦合限制仍由执行器最终核对。
+`tool_schemas(session)` generates two callable schemas from the actual backend and budget: `execute_python` and `model_forward`. For example, Qwen3.5 lists only 3/7/11/15/19/23 as valid standard attention layers and allows residual coordinates 0 through 24. `dispatch_tool` calls real `ProgrammingSession` methods and rejects unknown tools and extra Python execution arguments. The executor checks coupled limits on counts, tokens, and return sizes.
 
-这提供跨模型服务商的接口描述；它本身不是程序设计者能力证明。下一步需要让新的模型上下文实际使用这些工具，保留完整程序和费用，再同固定配方／随机搜索比较。独立原作上下文不得取得参考编辑或当前研究会话的分析结论。
+This provides an interface description across model providers. The next step is to have a new model context actually use the tools, retaining the complete program and costs, then compare it with fixed recipes and random search. An independent original-protocol context must not receive the reference edit or analysis conclusions from the current research session.

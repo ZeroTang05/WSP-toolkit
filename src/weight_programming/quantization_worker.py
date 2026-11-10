@@ -1,4 +1,4 @@
-"""在独立的 LLM Compressor 环境生成打包的 4 位检查点。"""
+"""Generate packed 4-bit checkpoints in a standalone LLM Compressor environment."""
 
 from importlib.metadata import version
 import json
@@ -7,7 +7,7 @@ import sys
 
 
 def main(request_path):
-    """重放父版本，再用官方 GPTQ 或 AWQ 校准并保存检查点。"""
+    """Replay the parent version, calibrate and save checkpoints with official GPTQ or AWQ."""
     import torch
     from compressed_tensors.quantization import QuantizationArgs, QuantizationScheme
     from datasets import Dataset

@@ -1,4 +1,4 @@
-"""调用 Circuit Tracer 并报告前馈替代的输出误差。"""
+"""Calls Circuit Tracer and reports the output error of the feedforward substitution."""
 
 from contextlib import ExitStack
 from importlib.metadata import version
@@ -8,7 +8,7 @@ import sys
 
 
 def fidelity(model, transcoders, tokens, target_ids, input_hook):
-    """在相同词元上比较原模型与不加入误差向量的替代模型。"""
+    """Compare the original model and the replacement model without error vectors on the same tokens."""
     import torch
     from torch.nn import functional as F
 
@@ -26,7 +26,7 @@ def fidelity(model, transcoders, tokens, target_ids, input_hook):
         def hook(module, args, original):
             source = inputs[layer] if input_hook == "hook_resid_mid" else args[0]
             reconstructed = transcoders[layer](source).to(original.dtype)
-            # 归因库保留开头的特殊词元，不为该位置生成特征节点。
+            # The attribution library retains the initial special token and does not generate feature nodes for that position.
             reconstructed[:, model.zero_positions] = original[:, model.zero_positions]
             if replace:
                 return reconstructed
@@ -53,7 +53,7 @@ def fidelity(model, transcoders, tokens, target_ids, input_hook):
 
 
 def graph_records(graph, node_threshold, edge_threshold):
-    """保留上游节点顺序，按同一矩阵索引转换成通用有向图格式。"""
+    """Preserve the order of upstream nodes and convert to a general directed graph format according to the same matrix index."""
     import torch
     from circuit_tracer.graph import prune_graph
 
@@ -90,7 +90,7 @@ def graph_records(graph, node_threshold, edge_threshold):
 
 
 def main(request_path):
-    """在绑定的真实检查点上生成梯度图，输出原始数值和可画的摘要。"""
+    """Generate a gradient graph on the bound real checkpoint, outputting raw values and a plottable summary."""
     import numpy as np
     import torch
     from circuit_tracer import ReplacementModel

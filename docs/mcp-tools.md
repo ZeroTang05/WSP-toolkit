@@ -1,8 +1,8 @@
-# MCP and Python tools · MCP 与 Python 工具
+# MCP and Python tools
 
 The same tool definitions serve a local Model Context Protocol (MCP) client and Python. Start with `describe_model` to find the model's version ID and observation sites. A site names a specific internal location, such as the output of a feed-forward layer.
 
-两种入口共用同一套工具。先调用 `describe_model` 获取模型版本和观测位置，再按需要读取权重或运行模型。每次运行会把大数组和明细保存到工作区。返回的产物 ID 可以用来读取、比较或绘图。
+Both entry points share the same tools. Call `describe_model` first to obtain the model version and observable sites, then read weights or run the model as needed. Each run saves large arrays and details in the workspace. Use the returned artifact IDs to read, compare, or plot results.
 
 ## Setup
 
@@ -39,25 +39,25 @@ This reads four values from the first token of the first sample. The three range
 
 ## Tools and permissions
 
-| Task · 任务 | Tools | Setup |
+| Task| Tools | Setup |
 |---|---|---|
-| Discover, run, and read · 发现、前向和读取 | `describe_model`, `model_forward`, `list_tensors`, `read_tensor`, `read_artifact`, `get_run` | Default. Model capabilities select generation, text scoring, or classification |
-| Edit and replay · 补丁与重放 | `create_patch`, `apply_patch`, `revert_patch`, `export_patch`, `import_patch`, `export_model` | `--allow-edits`. Edits are saved as workspace artifacts linked to their parent version |
-| Observe, explain, and compare · 表示、归因和比较 | `scan_lens`, `compare_models`, `trace_circuit`, `extract_features`, `probe_representation`, `render_evidence`, `attribute_output` | `analysis` adds probes, heatmaps, directed graphs, and attention maximum flow. `gradients` with `--allow-gradients` enables integrated gradients. Feature extraction needs a registered dictionary |
-| Intervene · 临时干预 | `run_intervention`, `localize_behavior` | `--allow-interventions`. Replace, zero, or shift selected activations. The `concepts` extra adds LEACE |
-| Run Python · 隔离 Python | `execute_python` | `--allow-python` on Linux with Bubblewrap and a virtual environment. Use `--allow-edits` to create a patch from an output array |
-| Analyze or combine updates · 分析与组合更新 | `analyze_weight_delta`, `project_weight`, `merge_updates`, `prune_and_compensate`, `compress_update` | Delta analysis is read-only. Other tools require `--allow-edits`. Methods include TIES, DARE, Wanda, SparseGPT, and low-rank update compression |
-| Compare answers · 比较回答 | `score_preferences`, `evaluate_variants` | Register development rows with `--development-jsonl` for `evaluate_variants`. Rows contain `id`, `problem`, and `answer` |
-| Compress or train · 结构压缩与训练 | `compress_model`, `train_update` | See the settings below |
-| Edit factual associations · 知识编辑 | `edit_facts` | `--allow-edits --allow-gradients` and a separate EasyEdit environment |
+| Discover, run, and read| `describe_model`, `model_forward`, `list_tensors`, `read_tensor`, `read_artifact`, `get_run` | Default. Model capabilities select generation, text scoring, or classification |
+| Edit and replay| `create_patch`, `apply_patch`, `revert_patch`, `export_patch`, `import_patch`, `export_model` | `--allow-edits`. Edits are saved as workspace artifacts linked to their parent version |
+| Observe, explain, and compare| `scan_lens`, `compare_models`, `trace_circuit`, `extract_features`, `probe_representation`, `render_evidence`, `attribute_output` | `analysis` adds probes, heatmaps, directed graphs, and attention maximum flow. `gradients` with `--allow-gradients` enables integrated gradients. Feature extraction needs a registered dictionary |
+| Intervene| `run_intervention`, `localize_behavior` | `--allow-interventions`. Replace, zero, or shift selected activations. The `concepts` extra adds LEACE |
+| Run Python | `execute_python` | `--allow-python` on Linux with Bubblewrap and a virtual environment. Use `--allow-edits` to create a patch from an output array |
+| Analyze or combine updates| `analyze_weight_delta`, `project_weight`, `merge_updates`, `prune_and_compensate`, `compress_update` | Delta analysis is read-only. Other tools require `--allow-edits`. Methods include TIES, DARE, Wanda, SparseGPT, and low-rank update compression |
+| Compare answers| `score_preferences`, `evaluate_variants` | Register development rows with `--development-jsonl` for `evaluate_variants`. Rows contain `id`, `problem`, and `answer` |
+| Compress or train| `compress_model`, `train_update` | See the settings below |
+| Edit factual associations| `edit_facts` | `--allow-edits --allow-gradients` and a separate EasyEdit environment |
 
 For comparisons across separately loaded checkpoints, use `--comparison-model` and select `right_workspace="comparison"`. Crosscoder comparison also takes the two snapshot IDs and checks that their input token sequences align.
 
-## Classification models · 分类模型
+## Classification models
 
 DistilBERT single-label classifiers use `model_forward(mode="predict", texts=[...])`. The returned artifacts contain `class_logits`, `class_probabilities`, and `predicted_label_ids`; `summary.label_names` gives their label order. Observations include embeddings, encoder block outputs, feed-forward inputs and outputs, and bidirectional attention. The same artifact reader, heatmaps, linear probes, CKA comparison, and weight patch tools consume these results. `describe_model` reports the available modes and sites.
 
-分类模型把一段文字归到一个标签，例如正面或负面。`predict`（分类预测）同时保存标签分数和指定位置的内部数值。分类器保留自己的特殊词元；注意力可以同时查看前文和后文。模型的词表读出、生成和因果干预能力按后端分别开放。
+A classification model assigns a label to text, such as positive or negative. `predict` saves label scores and internal values at selected sites. Classifiers retain their own special tokens, and attention can inspect both preceding and following text. Vocabulary readout, generation, and causal interventions are exposed according to backend capabilities.
 
 ```sh
 python -m pip install '.[qwen3,mcp,analysis]' 'pyarrow==17.0.0'
@@ -68,7 +68,7 @@ python examples/mcp_classification.py --model /path/to/DistilBERT-SST2 \
 
 The example uses 16 real SST-2 training rows. Class scores matched direct Transformers inference exactly. A linear probe scored 7/8 on separate demonstration rows, with a 4/8 shuffled-label control. The example also checked all six attention layers, an additive classifier-bias patch, and cross-architecture CKA. [Checkpoint](https://huggingface.co/distilbert/distilbert-base-uncased-finetuned-sst-2-english) · [SST-2](https://huggingface.co/datasets/stanfordnlp/sst2) · [Runnable example](../examples/mcp_classification.py)
 
-## Imported adapters and directions · 外部适配器与方向
+## Imported adapters and directions
 
 Install `peft` and pass `--peft-adapter /path/to/adapter` when starting MCP. Repeat the option to register several adapters. Python accepts `open_inspection(..., peft_adapters=[...])` for base-model adapters; the host can bind an adapter to an edited parent with `tools.delta.import_peft_adapter(parent_variant_id, adapter_dir)`. The returned `adapter_id` works with `analyze_weight_delta`, `compress_update`, and `merge_updates`. Startup registrations appear in `describe_model.registered_adapters`.
 
@@ -87,11 +87,11 @@ For larger direction analyses, `analyze_weight_delta` accepts `direction_solver=
 
 For activation direction injection, set `run_intervention.method` to `direction`. Pass `strength` and either `direction`, a list with one value per channel, or `direction_artifact_id`, the ID of a one-dimensional `channel` array. The tool normalizes the direction across the selected channels before scaling it and adding it to the specified token positions. [Contrastive Activation Addition](https://arxiv.org/abs/2312.06681) · [Runnable example](../examples/mcp_intervention.py)
 
-## Interpretability methods · 可解释性方法
+## Interpretability methods
 
-**Graph rendering · 有向图.** Call `trace_circuit` with `method="attention_flow"`, then pass its `graph_artifact_id` to `render_evidence` with `view="graph"`. `read_artifact` returns the nodes, edges, and numeric source ID. Each arrow summarizes the maximum flow between a query position and an input token across the selected layers. The figure preserves the `descriptive_attention` evidence label. Set `max_edges` to limit visible edges by absolute score, or `format="pdf"` to save a vector figure. [Attention Flow](https://aclanthology.org/2020.acl-main.385/) · [Runnable example](../examples/mcp_attention_rollout.py)
+**Graph rendering.** Call `trace_circuit` with `method="attention_flow"`, then pass its `graph_artifact_id` to `render_evidence` with `view="graph"`. `read_artifact` returns the nodes, edges, and numeric source ID. Each arrow summarizes the maximum flow between a query position and an input token across the selected layers. The figure preserves the `descriptive_attention` evidence label. Set `max_edges` to limit visible edges by absolute score, or `format="pdf"` to save a vector figure. [Attention Flow](https://aclanthology.org/2020.acl-main.385/) · [Runnable example](../examples/mcp_attention_rollout.py)
 
-**LEACE · 线性概念移除.** Install `analysis` and `concepts`. Call `probe_representation` with `fit_eraser=true`, labeled activations, and separate `train_indices` and `evaluation_indices`. The tool fits a transform on the training rows and reports held-out linear probe accuracy before and after applying it. Pass `concept_erasure.eraser_artifact_id` to `run_intervention` with `method="concept_erasure"` on the same model version and site. An optional `control_seed` applies a seeded random change of the same size per token. On SmolLM2-135M-Instruct, the probe went from 15 correct to 8 correct on 16 held-out noun and verb examples. [LEACE paper](https://arxiv.org/abs/2306.03819) · [Author library](https://github.com/EleutherAI/concept-erasure) · [English EWT dataset](https://universaldependencies.org/treebanks/en_ewt/index.html)
+**LEACE.** Install `analysis` and `concepts`. Call `probe_representation` with `fit_eraser=true`, labeled activations, and separate `train_indices` and `evaluation_indices`. The tool fits a transform on the training rows and reports held-out linear probe accuracy before and after applying it. Pass `concept_erasure.eraser_artifact_id` to `run_intervention` with `method="concept_erasure"` on the same model version and site. An optional `control_seed` applies a seeded random change of the same size per token. On SmolLM2-135M-Instruct, the probe went from 15 correct to 8 correct on 16 held-out noun and verb examples. [LEACE paper](https://arxiv.org/abs/2306.03819) · [Author library](https://github.com/EleutherAI/concept-erasure) · [English EWT dataset](https://universaldependencies.org/treebanks/en_ewt/index.html)
 
 The LEACE example takes a directory with `en_ewt-ud-train.conllu` and `en_ewt-ud-dev.conllu`. [English EWT r2.17](https://github.com/UniversalDependencies/UD_English-EWT/tree/r2.17)
 
@@ -100,13 +100,13 @@ python -m pip install '.[qwen3,mcp,analysis,concepts]' 'conllu==6.0.0'
 python examples/mcp_concept_erasure.py --model /path/to/checkpoint --dataset /path/to/UD_English-EWT
 ```
 
-**Answer attribution · 整段答案归因.** With `gradients` and `--allow-gradients`, pass `method="contrastive_sequence"`, `text`, `baseline_text`, `chosen`, and `rejected` to `attribute_output`. Use equally long prompt token sequences and include leading spaces where the answers require them. The tool fixes both answers and integrates the input gradient of their log-probability margin, with the same `sum` or `mean` aggregation as `score_preferences`. The output contains one signed contribution per prompt token. `integration_error` compares their sum with the observed margin change. [Inseq](https://aclanthology.org/2023.acl-demo.40/) · [Runnable example with `--attribution`](../examples/mcp_representation.py)
+**Answer attribution.** With `gradients` and `--allow-gradients`, pass `method="contrastive_sequence"`, `text`, `baseline_text`, `chosen`, and `rejected` to `attribute_output`. Use equally long prompt token sequences and include leading spaces where the answers require them. The tool fixes both answers and integrates the input gradient of their log-probability margin, with the same `sum` or `mean` aggregation as `score_preferences`. The output contains one signed contribution per prompt token. `integration_error` compares their sum with the observed margin change. [Inseq](https://aclanthology.org/2023.acl-demo.40/) · [Runnable example with `--attribution`](../examples/mcp_representation.py)
 
-**Tuned Lens · 调优透镜.** Capture intermediate residuals and the final residual in a calibration run. The Python host calls `tools.representations.fit_tuned_lens(run_id, site_ids, sample_indices)` to fit `hidden + W @ hidden + bias` at each selected site while the model stays frozen. The loss compares the translated distribution with the model's final distribution. Pass the returned `decoder_ref` and `method="tuned_lens"` to `scan_lens` through Python or MCP. The artifact binds the translator to the model version and sites. On four held-out SmolLM2-135M-Instruct prompts, mean first-block KL divergence from the final distribution moved from 24.64 to 0.55. Lower values mean closer predictions. [Tuned Lens](https://arxiv.org/abs/2303.08112) · [Runnable example](../examples/tuned_lens.py)
+**Tuned Lens.** Capture intermediate residuals and the final residual in a calibration run. The Python host calls `tools.representations.fit_tuned_lens(run_id, site_ids, sample_indices)` to fit `hidden + W @ hidden + bias` at each selected site while the model stays frozen. The loss compares the translated distribution with the model's final distribution. Pass the returned `decoder_ref` and `method="tuned_lens"` to `scan_lens` through Python or MCP. The artifact binds the translator to the model version and sites. On four held-out SmolLM2-135M-Instruct prompts, mean first-block KL divergence from the final distribution moved from 24.64 to 0.55. Lower values mean closer predictions. [Tuned Lens](https://arxiv.org/abs/2303.08112) · [Runnable example](../examples/tuned_lens.py)
 
-**AtP* · 梯度筛选与精确复核.** Enable `--allow-interventions --allow-gradients` on a Llama or Qwen3 model. Call `localize_behavior` with `method="atp_star"`, candidate `site_ids`, and paired texts. GradDrop sets one layer's residual-branch gradients to zero at a time and ranks residual and feed-forward input sites by the resulting effect estimates. The tool verifies up to `verify_top_k` sites with exact activation replacement. Use `review_pairs` for held-out checks and `control_site_ids` for exact controls. `prefilter` records the gradient estimates separately from `ranked_sites`, which contains measured effects. Both `forward_budget` and `backward_budget` are checked before computation. [AtP*](https://arxiv.org/abs/2403.00745) · [Runnable example with `--atp-star`](../examples/mcp_intervention.py)
+**AtP*.** Enable `--allow-interventions --allow-gradients` on a Llama or Qwen3 model. Call `localize_behavior` with `method="atp_star"`, candidate `site_ids`, and paired texts. GradDrop sets one layer's residual-branch gradients to zero at a time and ranks residual and feed-forward input sites by the resulting effect estimates. The tool verifies up to `verify_top_k` sites with exact activation replacement. Use `review_pairs` for held-out checks and `control_site_ids` for exact controls. `prefilter` records the gradient estimates separately from `ranked_sites`, which contains measured effects. Both `forward_budget` and `backward_budget` are checked before computation. [AtP*](https://arxiv.org/abs/2403.00745) · [Runnable example with `--atp-star`](../examples/mcp_intervention.py)
 
-## Causal circuits · 因果回路
+## Causal circuits
 
 On Llama and Qwen3, enable `--allow-interventions` and call `describe_model` to read `circuit_nodes`. The ordered nodes are the input embedding, each attention and feed-forward block, and the final output. An edge goes from a component that writes to the shared residual state to a later component that reads it. Pass aligned `clean_text` and `corrupt_text` with `target_token` and `alternative_token` in `pairs`. Each pair can select `positions`, or use all positions by default.
 
@@ -118,7 +118,7 @@ On Llama and Qwen3, enable `--allow-interventions` and call `describe_model` to 
 
 Use `read_artifact` to read the scores, or `render_evidence(view="graph")` with the returned `graph_artifact_id`. On the SmolLM2-135M-Instruct example, ACDC kept one of four candidate edges. On a separate pair, the output's KL divergence from the clean model was 0.00059 with the selected edge kept and 0.54039 with a same-size random selection. [Path Patching](https://arxiv.org/abs/2304.05969) · [ACDC](https://arxiv.org/abs/2304.14997) · [EAP](https://aclanthology.org/2024.blackboxnlp-1.25/) · [Runnable example](../examples/mcp_circuits.py)
 
-### Feature attribution graphs · 特征归因图
+### Feature attribution graphs
 
 Circuit Tracer uses a per-layer transcoder set to approximate each feed-forward layer with sparse features. Call `trace_circuit` with `method="feature_attribution_graph"`, `variant_id`, `transcoder_id`, `text`, and `target_tokens`. The result links the signed edge matrix, its node coordinates, a drawable graph, and a separate fidelity report. The report compares the original model's next-token distribution with a forward pass using the transcoders alone. Graph nodes also show reconstruction errors, the portions of the original activations the dictionary did not capture. [Circuit Tracer](https://aclanthology.org/2025.blackboxnlp-1.14/) · [Attribution graphs methodology](https://transformer-circuits.pub/2025/attribution-graphs/methods.html)
 
@@ -145,7 +145,7 @@ The example fits small dictionaries on SmolLM2-135M-Instruct using 32 calibratio
 
 Training rows need `id` and `problem`. Supervised training and recovery use `answer`, DPO uses `chosen` and `rejected`, and distillation uses `teacher_answer` and `teacher_model`. On an edited parent, load the matching parent model explicitly when reloading its PEFT adapter.
 
-### Packed quantization · 打包量化
+### Packed quantization
 
 `compress_model` supports `gptq` and `awq` through LLM Compressor. Both calibrate on the supplied `calibration_texts` and write packed 4-bit weights in `compressed-tensors` format. GPTQ uses second-order input statistics to limit reconstruction error. AWQ scales activation-sensitive channels before quantization and saves the asymmetric zero points needed to reload the weights. `group_size` accepts 32, 64, or 128 and must divide each targeted linear layer's input width. The vocabulary head remains in its original precision. [GPTQ](https://arxiv.org/abs/2210.17323) · [AWQ](https://arxiv.org/abs/2306.00978) · [LLM Compressor](https://github.com/vllm-project/llm-compressor)
 
@@ -164,7 +164,7 @@ python examples/mcp_quantization.py --model /path/to/checkpoint \
 
 On SmolLM2-135M-Instruct, the source weight file was 269.06 MB. GPTQ exported 113.18 MB and AWQ exported 114.03 MB, with 210 packed linear tensors each. Both reloaded through Transformers and produced finite next-token scores on CPU. [Runnable example](../examples/mcp_quantization.py)
 
-### SliceGPT · 隐藏维度切片
+### SliceGPT
 
 Use `method="slicegpt"`, `calibration_texts`, and a `target_hidden_size` that is a multiple of eight below the original width. The current adapter is for Llama. SliceGPT rotates internal states toward directions measured on calibration text, then removes dimensions. The export contains SafeTensors, a slicing configuration, and the transformed shortcut matrices. Use `load_sliced_checkpoint` from `weight_programming.slicegpt_worker` in the SliceGPT environment to restore the model. [SliceGPT](https://arxiv.org/abs/2401.15024) · [Pinned upstream source](https://github.com/microsoft/TransformerCompression/tree/183cd92d8469bf3f1e979585a08dc382692bfbed)
 
@@ -184,11 +184,11 @@ Pass a `session_id`, `variant_id`, and `code` to `execute_python`. Calls with th
 
 With edit permission, `edits` can turn an output array into a patch. Each edit specifies `tensor`, `op`, `value` (the output name), and an optional `region`. Use `apply_patch` to register the resulting candidate. The Python host API enables the tool with `open_inspection(..., allow_python=True)`. Use a `with` block to close the session processes at the end.
 
-## Factual editing · 知识编辑
+## Factual editing
 
 `edit_facts` runs ROME for one fact at one layer or MEMIT for up to eight facts across selected layers. The tool measures feed-forward activations on `calibration_texts` and passes their second-moment matrices to EasyEdit. These matrices summarize how the input channels vary together. EasyEdit loads a separate float32 copy of the model and returns the edited weights as a patch. [ROME](https://arxiv.org/abs/2202.05262) · [MEMIT](https://arxiv.org/abs/2210.07229) · [EasyEdit](https://aclanthology.org/2024.acl-demos.9/)
 
-每条事实用 `subject`（主体）、`prompt`（含一个 `{}` 的句式）、`target_true`（原答案）和 `target_new`（目标答案）表示。用 `apply_patch` 创建候选版本，再用 `score_preferences` 比较直接提问、改写后的提问和邻近事实。当前接入口面向 Llama 和 Qwen3，下面的示例在 SmolLM2-135M-Instruct 上验证。
+Each fact has a `subject`, a `prompt` containing one `{}`, a `target_true` original answer, and a `target_new` target answer. Use `apply_patch` to create a candidate, then use `score_preferences` to compare direct questions, paraphrases, and neighboring facts. The current interface targets Llama and Qwen3; the example below was validated on SmolLM2-135M-Instruct.
 
 Install EasyEdit separately from WSP-toolkit. The example used this pinned source with Python 3.11. [Pinned EasyEdit source](https://github.com/zjunlp/EasyEdit/tree/5c519afb14e39c7f70bc5536ebd777a62d8493bf)
 

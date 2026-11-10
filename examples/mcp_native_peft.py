@@ -1,4 +1,4 @@
-"""用真实的一步 rsLoRA 更新验证原生 PEFT 导入、分析和压缩。"""
+"""Verify native PEFT import, analysis, and compression using a real one-step rsLoRA update."""
 
 import argparse
 import asyncio
@@ -15,7 +15,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 
 async def main(model):
-    """用 PEFT 原生保存格式接入现有 MCP 工具，再核对合并与前向。"""
+    """Use the native PEFT save format with existing MCP tools and verify merging and forward passes."""
     torch.manual_seed(11)
     tokenizer = AutoTokenizer.from_pretrained(model, local_files_only=True)
     ids = tokenizer("The capital of France is Paris.", return_tensors="pt")
@@ -37,7 +37,7 @@ async def main(model):
         root = Path(directory)
         source = root / "native"
         adapter.save_pretrained(source, safe_serialization=True, save_embedding_layers=False)
-        # 以实际 PEFT 重载和合并为参照，工具导入只消费磁盘上的原生文件。
+        # Using actual PEFT reloads and merges as a reference, the tool import only consumes native files on disk.
         reloaded = PeftModel.from_pretrained(
             AutoModelForCausalLM.from_pretrained(model, local_files_only=True, dtype=torch.float32,
                                                 attn_implementation="eager"), source).eval()
@@ -46,7 +46,7 @@ async def main(model):
             original = reloaded.get_base_model().get_submodule(target).base_layer.weight.detach().clone()
             merged = reloaded.merge_and_unload(safe_merge=True)
             torch.testing.assert_close(merged(**ids).logits, native_logits, rtol=1e-4, atol=1e-4)
-            # 检查点按原精度保存，比较参照也写回同一精度。
+            # Checkpoints are saved at the original precision, and comparison references are written back to the same precision.
             for module in (target, second_target):
                 weight = merged.get_submodule(module).weight
                 weight.copy_(weight.to(source_dtype).float())

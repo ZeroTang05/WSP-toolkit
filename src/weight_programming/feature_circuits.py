@@ -1,4 +1,4 @@
-"""校验模型和特征字典的绑定，并登记上游归因图。"""
+"""Verify the binding of the model and feature dictionary, and register the upstream attribution graph."""
 
 import json
 import os
@@ -15,7 +15,7 @@ from .worker_runtime import run_model_worker
 
 
 class FeatureCircuits:
-    """在宿主登记的独立 Circuit Tracer 环境执行特征级归因。"""
+    """Perform feature-level attribution in a standalone Circuit Tracer environment registered on the host."""
 
     def __init__(self, tools, python=None):
         self.tools = tools
@@ -29,7 +29,7 @@ class FeatureCircuits:
                 raise ValueError("Provide an executable Python from the Circuit Tracer environment")
 
     def _manifest(self, transcoder_id):
-        """限制字典在工作区登记目录内，避免运行参数指定任意路径。"""
+        """Limit the dictionary to the workspace registration directory to avoid specifying arbitrary paths in run parameters."""
         if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}", transcoder_id):
             raise ValueError("Invalid transcoder ID")
         folder = self.root / transcoder_id
@@ -47,7 +47,7 @@ class FeatureCircuits:
         return folder, manifest
 
     def available(self, variant_id):
-        """只列出与当前版本绑定的字典。"""
+        """Only dictionaries bound to the current version are listed."""
         if self.python is None:
             return []
         found = []
@@ -59,7 +59,7 @@ class FeatureCircuits:
 
     def trace(self, variant_id, transcoder_id, text, target_tokens, max_feature_nodes=32,
               node_threshold=0.8, edge_threshold=0.98):
-        """分别保存有向图、完整数值、节点索引和替代误差。"""
+        """Save directed graphs, complete values, node indexes, and substitution errors separately."""
         if self.python is None:
             raise ValueError("Register a Circuit Tracer environment")
         tools = self.tools

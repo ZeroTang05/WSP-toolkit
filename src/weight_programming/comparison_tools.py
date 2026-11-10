@@ -1,4 +1,4 @@
-"""复用权重差分、共同输入的表示和候选评测来比较模型。"""
+"""Reuse weight differences, representations of common inputs, and candidate evaluations to compare models."""
 
 import hashlib
 import json
@@ -9,7 +9,7 @@ from .representation_tools import activation_rows
 
 
 def _gram(array):
-    """按样本对齐后计算居中的线性核。"""
+    """Computes a centered linear kernel after alignment by sample."""
     if not np.isfinite(array).all():
         raise ValueError("Representation contains nonfinite values")
     centered = array.astype(np.float64) - array.mean(axis=0, dtype=np.float64)
@@ -19,14 +19,14 @@ def _gram(array):
 
 
 class ComparisonTools:
-    """宿主可登记第二个检查点，跨基座比较使用各自的执行器。"""
+    """The host can register a second checkpoint and compare across bases using their respective executors."""
 
     def __init__(self, primary):
         self.primary = primary
 
     def compare_models(self, left_variant_id, right_variant_id, views, right_workspace="primary",
                        texts=None, left_sites=None, right_sites=None, tensors=None, evaluation=None, crosscoder=None):
-        """独立返回所选视图及其证据。"""
+        """Independently returns the selected view and its evidence."""
         left = self.primary
         right = left.workspace_tools(right_workspace)
         left.versions.variant(left_variant_id)

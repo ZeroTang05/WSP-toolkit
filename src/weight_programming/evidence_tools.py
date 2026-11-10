@@ -1,4 +1,4 @@
-"""从已登记产物渲染可追溯的热力图和有向图。"""
+"""Render traceable heatmaps and directed graphs from registered artifacts."""
 
 from math import isfinite
 
@@ -15,7 +15,7 @@ _VIEW_AXES = {"activation_heatmap": ("token", "channel"),
 
 
 def render_evidence(artifacts, artifact_id, view, region=None, axes=None, format="png", max_edges=24):
-    """按指定轴画图，保留范围、色标和重点数值坐标。"""
+    """Draws a graph along the specified axes, preserving range, color scale, and key numerical coordinates."""
     from matplotlib.backends.backend_agg import FigureCanvasAgg
     from matplotlib.figure import Figure
 
@@ -77,7 +77,7 @@ def render_evidence(artifacts, artifact_id, view, region=None, axes=None, format
 
 
 def _render_graph(artifacts, artifact_id, format, max_edges):
-    """按节点层级和边的分数画图，并保留证据类型与排序明细。"""
+    """Draw graphs by node level and edge scores, keeping evidence type and ordering details."""
     import networkx as nx
     from matplotlib.backends.backend_agg import FigureCanvasAgg
     from matplotlib.figure import Figure

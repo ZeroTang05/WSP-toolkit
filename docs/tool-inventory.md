@@ -1,98 +1,98 @@
-# WSP-toolkit 工具实现清单
+# WSP-toolkit implementation inventory
 
-2026-11-09。当前源码版本为 `0.4.0a5.dev0`。设计目录中的 **34 个工具条目、47 种具名方法**已接入。模型注册由宿主完成，工具发现由 Python 登记表和 MCP 原生接口提供；模型可调用的工具按实际后端、依赖和授权开放。
+2026-11-09. Current source version: `0.4.0a5.dev0`. All **34 tool entries and 47 named methods** in the design catalog are integrated. The host registers models; the Python registry and native MCP interface provide tool discovery. Tools are exposed according to backend capabilities, dependencies, and permissions.
 
-入口：[当前项目状态](../PROJECT_STATUS.md) · [英文首页](../README.md) · [中文首页](../README.zh-CN.md) · [安装与运行](mcp-tools.md) · [详细设计](tool-design.md) · [机器可读目录](tool-catalog.json)。
+Entry points: [project status](../PROJECT_STATUS.md) · [homepage](../README.md) · [installation and usage](mcp-tools.md) · [detailed design](tool-design.md) · [machine-readable catalog](tool-catalog.json).
 
-## 工具如何组合
+## How tools fit together
 
 ```mermaid
 flowchart LR
-    A[大模型或研究脚本] --> B[MCP 与 Python 共用登记表]
-    B --> C[权重读取与版本补丁]
-    B --> D[前向与内部快照]
-    C --> E[差分、方向、合并与压缩]
-    D --> F[表示、探针、归因与回路]
-    E --> G[候选模型与配对评测]
+    A[Language model or research script] --> B[Shared MCP and Python registry]
+    B --> C[Weight reads and version patches]
+    B --> D[Forward passes and internal snapshots]
+    C --> E[Deltas, directions, merging and compression]
+    D --> F[Representations, probes, attribution and circuits]
+    E --> G[Candidate models and paired evaluation]
     F --> G
-    G --> H[可重放补丁、模型文件与证据产物]
+    G --> H[Replayable patches, model files and evidence artifacts]
 ```
 
-基础层封装 PyTorch、Transformers、Safetensors 和 PEFT。分析层复用已有算法和保存的快照。不同方法生成相同格式的补丁或产物，后续工具可以直接引用它们的 ID。
+The foundation wraps PyTorch, Transformers, Safetensors, and PEFT. The analysis layer reuses existing algorithms and saved snapshots. Different methods produce patches or artifacts in common formats, so later tools can reference their IDs directly.
 
-## 逐项实现与简单验证
+## Implementations and basic validation
 
-每个示例使用真实模型、真实前向或真实训练样本。表中同一行共享示例，方法通过原工具的参数选择。
+Each example uses a real model, real forward pass, or real training samples. Entries on the same row share examples; methods are selected through parameters of the original tool.
 
-| 工具条目 | 已接入能力 | 实现与运行示例 |
+| Tool entry | Integrated capabilities | Implementation and runnable examples |
 |---|---|---|
-| `register_model`、`describe_model` | 固定检查点、指纹、模型能力与观测位置 | [注册](../src/weight_programming/model_registry.py)、[服务](../src/weight_programming/inspection.py)；[双入口示例](../examples/mcp_inspection.py) |
-| `list_tensors`、`read_tensor` | 分页列权重、读取原精度切片和来源版本 | [存储](../src/weight_programming/tensor_store.py)；[示例](../examples/mcp_inspection.py) |
-| `create_patch`、`apply_patch`、`revert_patch` | 原精度补丁、父版本验证、候选与撤销 | [版本与补丁](../src/weight_programming/patches.py)；[完整示例](../examples/mcp_patch.py) |
-| `export_patch`、`import_patch`、`export_model` | 跨工作区重放及完整检查点导出、重载 | [实现](../src/weight_programming/patches.py)；[示例](../examples/mcp_patch.py) |
-| `model_forward` | 生成、给定文本评分、分类预测；残差、前馈和注意力快照 | [前向服务](../src/weight_programming/forward_service.py)、[编码器](../src/weight_programming/encoder_backend.py)；[生成示例](../examples/mcp_inspection.py)、[分类示例](../examples/mcp_classification.py) |
-| `read_artifact`、`get_run`、`list_tools` | 数组切片、明细分页、运行状态、用量与实际可用工具 | [产物](../src/weight_programming/artifacts.py)、[登记表](../src/weight_programming/tool_registry.py)；[示例](../examples/mcp_inspection.py) |
-| `execute_python` | Linux 隔离会话、变量保留、权重与数组交换、补丁提案 | [实现](../src/weight_programming/python_tools.py)；[真实 Qwen3 示例](../examples/mcp_python.py) |
-| `analyze_weight_delta` | 候选或原生 PEFT LoRA 差分、逐层变化、精确及随机低秩方向、实际舍入误差 | [实现](../src/weight_programming/delta_tools.py)；[差分示例](../examples/mcp_delta.py)、[PEFT 示例](../examples/mcp_native_peft.py) |
-| `project_weight` | 显式方向或两组激活均值差；验证输出坐标后投影所选列 | [服务](../src/weight_programming/inspection.py)、[已有方向算法](../src/weight_programming/directions.py)；[示例](../examples/mcp_delta.py) |
-| `merge_updates` | 补丁与已登记适配器的任务向量加权、TIES、DARE | [实现](../src/weight_programming/editing_tools.py)；[补丁示例](../examples/mcp_patch.py)、[适配器示例](../examples/mcp_native_peft.py) |
-| `prune_and_compensate` | Wanda、固定掩码 SparseGPT、自适应 SparseGPT | [封装](../src/weight_programming/editing_tools.py)、[重建算法](../src/weight_programming/reconstruction.py)；[示例](../examples/mcp_patch.py) |
-| `compress_update` | 普通或输入加权低秩截断、逐张量秩预算、可选密集补丁 | [实现](../src/weight_programming/delta_tools.py)；[示例](../examples/mcp_delta.py)、[分配秩的示例](../examples/mcp_native_peft.py) |
-| `evaluate_variants`、`score_preferences` | 开发集配对评测、逐题区间、回答概率及相对参考分差 | [实现](../src/weight_programming/evaluation_tools.py)；[评测示例](../examples/mcp_evaluation.py)、[概率与归因示例](../examples/mcp_representation.py) |
-| `compare_models` | 同坐标权重、线性 CKA、开发集行为、联合字典 | [实现](../src/weight_programming/comparison_tools.py)；[行为](../examples/mcp_evaluation.py)、[联合字典](../examples/mcp_features.py)、[跨架构](../examples/mcp_classification.py) |
-| `scan_lens` | 直接词表读出、调优透镜及与最终分布的差距 | [实现](../src/weight_programming/representation_tools.py)；[直接读出](../examples/mcp_representation.py)、[拟合与复核](../examples/tuned_lens.py) |
-| `probe_representation` | 独立样本线性探针、控制标签、输入基线、LEACE 概念移除 | [实现](../src/weight_programming/representation_tools.py)；[分类](../examples/mcp_classification.py)、[LEACE](../examples/mcp_concept_erasure.py) |
-| `attribute_output` | 词元积分梯度、两段完整答案的对比分差归因 | [实现](../src/weight_programming/attribution_tools.py)；[示例](../examples/mcp_representation.py) |
-| `run_intervention`、`localize_behavior` | 替换、消融、方向注入、LEACE；精确扫描与 AtP* 梯度筛选后复核 | [干预](../src/weight_programming/intervention_tools.py)、[AtP*](../src/weight_programming/attribution_patching.py)；[干预与筛选](../examples/mcp_intervention.py)、[概念移除](../examples/mcp_concept_erasure.py) |
-| `render_evidence` | 激活、干预、注意力、相似度和归因热力图，以及有向图 | [实现](../src/weight_programming/evidence_tools.py)；[热力图](../examples/mcp_intervention.py)、[有向图](../examples/mcp_attention_rollout.py) |
-| `extract_features` | 稀疏自编码器、双来源联合字典、响应样本与重建误差 | [实现](../src/weight_programming/feature_tools.py)；[公开字典与联合字典示例](../examples/mcp_features.py) |
-| `trace_circuit` | 注意力传播与最大流、路径替换、ACDC、EAP、Circuit Tracer 特征归因图 | [回路](../src/weight_programming/edge_tracing.py)、[特征图](../src/weight_programming/feature_circuits.py)；[注意力](../examples/mcp_attention_rollout.py)、[边干预](../examples/mcp_circuits.py)、[特征图](../examples/mcp_feature_circuit.py) |
-| `compress_model` | 删层、Taylor 前馈通道剪枝、SliceGPT、GPTQ、AWQ | [结构工具](../src/weight_programming/structure_tools.py)、[独立环境封装](../src/weight_programming/compression_exports.py)；[训练与结构](../examples/mcp_training.py)、[切片](../examples/mcp_slicegpt.py)、[量化](../examples/mcp_quantization.py) |
-| `train_update` | LoRA、DPO、序列蒸馏、剪后恢复，保存 PEFT 与通用因子 | [实现](../src/weight_programming/training_tools.py)；[真实一步训练示例](../examples/mcp_training.py) |
-| `edit_facts` | ROME、MEMIT，补丁、改写和邻近事实对照 | [实现](../src/weight_programming/fact_tools.py)；[真实示例](../examples/mcp_fact_editing.py) |
+| `register_model`, `describe_model` | Pinned checkpoints, fingerprints, model capabilities and observable sites | [Registration](../src/weight_programming/model_registry.py), [service](../src/weight_programming/inspection.py); [dual-entry example](../examples/mcp_inspection.py) |
+| `list_tensors`, `read_tensor` | Paginated weight listing, original-precision slices and source versions | [Storage](../src/weight_programming/tensor_store.py); [example](../examples/mcp_inspection.py) |
+| `create_patch`, `apply_patch`, `revert_patch` | Original-precision patches, parent validation, candidates and reversion | [Versions and patches](../src/weight_programming/patches.py); [complete example](../examples/mcp_patch.py) |
+| `export_patch`, `import_patch`, `export_model` | Cross-workspace replay and complete checkpoint export and reload | [Implementation](../src/weight_programming/patches.py); [example](../examples/mcp_patch.py) |
+| `model_forward` | Generation, given-text scoring and classification; residual, feed-forward and attention snapshots | [Forward service](../src/weight_programming/forward_service.py), [encoder](../src/weight_programming/encoder_backend.py); [generation](../examples/mcp_inspection.py), [classification](../examples/mcp_classification.py) |
+| `read_artifact`, `get_run`, `list_tools` | Array slices, paginated details, run status, usage and available tools | [Artifacts](../src/weight_programming/artifacts.py), [registry](../src/weight_programming/tool_registry.py); [example](../examples/mcp_inspection.py) |
+| `execute_python` | Linux isolated sessions, persistent variables, weight and array exchange, patch proposals | [Implementation](../src/weight_programming/python_tools.py); [real Qwen3 example](../examples/mcp_python.py) |
+| `analyze_weight_delta` | Candidate or native PEFT LoRA deltas, layer changes, exact and randomized low-rank directions, actual rounding error | [Implementation](../src/weight_programming/delta_tools.py); [delta](../examples/mcp_delta.py), [PEFT](../examples/mcp_native_peft.py) |
+| `project_weight` | Explicit direction or mean difference of two activation sets; project selected columns after validating output coordinates | [Service](../src/weight_programming/inspection.py), [existing direction algorithms](../src/weight_programming/directions.py); [example](../examples/mcp_delta.py) |
+| `merge_updates` | Task-vector weighting, TIES and DARE for patches and registered adapters | [Implementation](../src/weight_programming/editing_tools.py); [patch](../examples/mcp_patch.py), [adapter](../examples/mcp_native_peft.py) |
+| `prune_and_compensate` | Wanda, fixed-mask SparseGPT and adaptive SparseGPT | [Wrapper](../src/weight_programming/editing_tools.py), [reconstruction](../src/weight_programming/reconstruction.py); [example](../examples/mcp_patch.py) |
+| `compress_update` | Ordinary or input-weighted low-rank truncation, per-tensor rank budgets and optional dense patches | [Implementation](../src/weight_programming/delta_tools.py); [example](../examples/mcp_delta.py), [rank allocation](../examples/mcp_native_peft.py) |
+| `evaluate_variants`, `score_preferences` | Paired development-set evaluation, per-question intervals, answer probabilities and margins relative to a reference | [Implementation](../src/weight_programming/evaluation_tools.py); [evaluation](../examples/mcp_evaluation.py), [probability and attribution](../examples/mcp_representation.py) |
+| `compare_models` | Same-coordinate weights, linear CKA, development-set behavior and joint dictionaries | [Implementation](../src/weight_programming/comparison_tools.py); [behavior](../examples/mcp_evaluation.py), [joint dictionary](../examples/mcp_features.py), [cross-architecture](../examples/mcp_classification.py) |
+| `scan_lens` | Direct vocabulary readout, tuned lens and divergence from the final distribution | [Implementation](../src/weight_programming/representation_tools.py); [direct readout](../examples/mcp_representation.py), [fitting and verification](../examples/tuned_lens.py) |
+| `probe_representation` | Held-out linear probes, control labels, input baseline and LEACE concept erasure | [Implementation](../src/weight_programming/representation_tools.py); [classification](../examples/mcp_classification.py), [LEACE](../examples/mcp_concept_erasure.py) |
+| `attribute_output` | Token integrated gradients and contrastive margin attribution for two complete answers | [Implementation](../src/weight_programming/attribution_tools.py); [example](../examples/mcp_representation.py) |
+| `run_intervention`, `localize_behavior` | Replacement, ablation, direction injection, LEACE; exact scans and AtP* gradient screening with verification | [Intervention](../src/weight_programming/intervention_tools.py), [AtP*](../src/weight_programming/attribution_patching.py); [intervention and screening](../examples/mcp_intervention.py), [concept erasure](../examples/mcp_concept_erasure.py) |
+| `render_evidence` | Activation, intervention, attention, similarity and attribution heatmaps, plus directed graphs | [Implementation](../src/weight_programming/evidence_tools.py); [heatmaps](../examples/mcp_intervention.py), [directed graph](../examples/mcp_attention_rollout.py) |
+| `extract_features` | Sparse autoencoders, two-source joint dictionaries, response samples and reconstruction errors | [Implementation](../src/weight_programming/feature_tools.py); [public and joint dictionaries](../examples/mcp_features.py) |
+| `trace_circuit` | Attention rollout and maximum flow, path patching, ACDC, EAP and Circuit Tracer feature attribution graphs | [Circuits](../src/weight_programming/edge_tracing.py), [feature graphs](../src/weight_programming/feature_circuits.py); [attention](../examples/mcp_attention_rollout.py), [edge interventions](../examples/mcp_circuits.py), [feature graph](../examples/mcp_feature_circuit.py) |
+| `compress_model` | Layer removal, Taylor feed-forward channel pruning, SliceGPT, GPTQ and AWQ | [Structural tools](../src/weight_programming/structure_tools.py), [separate-environment wrapper](../src/weight_programming/compression_exports.py); [training and structure](../examples/mcp_training.py), [slicing](../examples/mcp_slicegpt.py), [quantization](../examples/mcp_quantization.py) |
+| `train_update` | LoRA, DPO, sequence distillation and post-pruning recovery, saving PEFT and general factors | [Implementation](../src/weight_programming/training_tools.py); [real one-step training](../examples/mcp_training.py) |
+| `edit_facts` | ROME and MEMIT patches, paraphrases and neighboring-fact controls | [Implementation](../src/weight_programming/fact_tools.py); [real example](../examples/mcp_fact_editing.py) |
 
-## 真实运行结果
+## Real execution results
 
-这些数值来自各工具示例，分别说明其实现与保存、读取、重载是否吻合。
+These figures come from the tool examples and check implementation, saving, reading, and reloading.
 
-| 示例 | 观测结果 |
+| Example | Observed result |
 |---|---|
-| SmolLM2 只读双入口 | Python 与 MCP 的权重、激活和生成回放读数一致；激活形状为 `1 × 5 × 576` |
-| 补丁、重放与重载 | BF16 目标权重改变一个元素，首个残差通道从 2.421107 变为 2.393364；撤销、跨工作区重放及完整重载均吻合 |
-| 差分与方向 | 两个已知变化的奇异值为 0.5、0.125；秩 1 更新存储 2,112 个参数；成对激活方向投影与公式逐元素吻合 |
-| 原生 PEFT | rsLoRA 的两个目标分别保留秩 2、3；实际缩放为 4.242641、5.196152；导入、分析、随机方向分解、合并及导出前向已核对 |
-| DistilBERT 与 SST-2 | 16 条真实样本的分类分数与直接推理最大误差为 0；8 条独立示例的探针为 7/8，控制为 4/8；6 层注意力及分类偏置补丁已核对 |
-| 跨架构 CKA | DistilBERT 与 SmolLM2 使用 8 条相同文本、各自最后有效词元的表示；示例相似度为 0.109967 |
-| Qwen3 注意力 | Qwen3-0.6B 的 28 层快照、`5 × 5` 传播矩阵、`1 × 5` 最大流矩阵及有向图已核对；同一示例也运行于 SmolLM2 的 30 层 |
-| 调优透镜 | 4 条独立 SmolLM2 提示中，首层与最终分布的平均 KL 从 24.64 降至 0.55。KL 越低表示两份预测分布越接近 |
-| LEACE | 独立的 16 条名词、动词示例中，移除前后线性探针从 15/16 变为 8/16；变换来自作者库 |
-| 边级回路 | ACDC 在 4 条候选边中保留 1 条；独立输入上保留所选边的输出 KL 为 0.00059，同规模随机选择为 0.54039 |
-| 特征归因图 | 小型真实拟合字典生成 219 个节点、32 个特征节点；保存完整矩阵并核对图边；只用字典替代的输出 KL 为 4.465409 |
-| SliceGPT | 隐藏宽度由 576 变为 384，参数由 134,515,008 降至 127,180,800；严格重载与前向通过 |
-| GPTQ 与 AWQ | 原权重 269,060,552 字节；分别导出 113,175,416 与 114,029,456 字节，各 210 个打包张量；均在 CPU 重载并前向 |
-| 四种训练 | LoRA、DPO、序列蒸馏和剪后恢复各完成真实一步训练；PEFT 重载与保存的有效因子相符 |
+| SmolLM2 read-only dual entry | Python and MCP agree on weights, activations and generation replay; activation shape is `1 × 5 × 576` |
+| Patch, replay and reload | 1 BF16 weight element changed; the first residual channel changed from 2.421107 to 2.393364. Reversion, cross-workspace replay and full reload agreed |
+| Deltas and directions | Singular values of two known changes were 0.5 and 0.125; a rank 1 update stored 2,112 parameters; paired-activation direction projection matched the formula elementwise |
+| Native PEFT | Two rsLoRA targets retained ranks 2 and 3; actual scales were 4.242641 and 5.196152. Import, analysis, randomized direction decomposition, merging and exported forward passes were checked |
+| DistilBERT and SST-2 | Maximum classification-score error against direct inference on 16 real samples was 0; the probe scored 7/8 on 8 held-out examples, versus 4/8 for the control; 6 attention layers and a classification-bias patch were checked |
+| Cross-architecture CKA | DistilBERT and SmolLM2 used representations of their respective last valid tokens for the same eight texts; example similarity was 0.109967 |
+| Qwen3 attention | Checked 28 Qwen3-0.6B layer snapshots, a `5 × 5` rollout matrix, `1 × 5` maximum-flow matrix and directed graph; the same example also ran on 30 SmolLM2 layers |
+| Tuned lens | Across 4 held-out SmolLM2 prompts, mean first-layer KL from the final distribution decreased from 24.64 to 0.55. Lower KL indicates closer predictive distributions |
+| LEACE | On 16 held-out noun and verb examples, the linear probe changed from 15/16 to 8/16 after erasure; the transform comes from the authors' library |
+| Edge-level circuits | ACDC retained 1 of 4 candidate edges; on held-out inputs, output KL with the selected edge retained was 0.00059, versus 0.54039 for a same-size random selection |
+| Feature attribution graph | A small fitted real dictionary produced 219 nodes, including 32 feature nodes; the full matrix was saved and graph edges checked; output KL with dictionary-only replacement was 4.465409 |
+| SliceGPT | Hidden width changed from 576 to 384 and parameters from 134,515,008 to 127,180,800; strict reload and forward pass succeeded |
+| GPTQ and AWQ | Original weights occupied 269,060,552 bytes; exports occupied 113,175,416 and 114,029,456 bytes, respectively, with 210 packed tensors each; both reloaded and ran on CPU |
+| Four training methods | LoRA, DPO, sequence distillation and post-pruning recovery each completed a real training step; reloaded PEFT matched the saved effective factors |
 
-特征归因图报告保留原模型与替代模型的差距。当前演示字典的输出 KL 为 4.47，使用它解释具体行为时应一起查看重建误差节点和保真报告。
+The feature attribution graph report retains the gap between original and replacement models. The demonstration dictionary's output KL is 4.47; consult reconstruction-error nodes and the fidelity report when using it to explain a specific behavior.
 
-## 运行环境与支持范围
+## Environments and support
 
-| 后端或插件 | 环境与边界 |
+| Backend or plugin | Environment and scope |
 |---|---|
-| Qwen3、Llama、DistilBERT | Transformers 4.57.6；CPU 或单张 CUDA 卡。分类器提供预测与观测；生成模型提供词表读出、生成和已验证的干预 |
-| Qwen3.5 | 单独的 Transformers 5.3.0 环境；混合注意力按层声明能力。已有真实观测记录保留在研究文档 |
-| 原生 PEFT | PEFT 0.21.2，线性 LoRA；实际比例与转置规则由库解析。额外适配器变换需要单独验证 |
-| Circuit Tracer | 独立环境：Circuit Tracer 0.5.0、NNsight 0.6.0、Transformers 4.57.3；需逐层字典与梯度授权 |
-| 量化 | 独立 LLM Compressor 0.15.0；输出 compressed-tensors（打包权重格式） |
-| SliceGPT | 固定上游提交 `183cd92d8469bf3f1e979585a08dc382692bfbed` 的独立环境；Llama 检查点 |
-| ROME、MEMIT | 固定 EasyEdit 源码和独立环境；需权重编辑及梯度授权 |
-| 持久 Python | Linux 与 Bubblewrap；宿主分别授权 Python 和权重写入 |
+| Qwen3, Llama, DistilBERT | Transformers 4.57.6; CPU or one CUDA GPU. Classifiers provide predictions and observations; generative models provide vocabulary readout, generation and validated interventions |
+| Qwen3.5 | Separate Transformers 5.3.0 environment; hybrid attention declares capabilities per layer. Real observation records are retained in the research documentation |
+| Native PEFT | PEFT 0.21.2, linear LoRA; the library resolves actual scaling and transpose rules. Additional adapter transformations require separate validation |
+| Circuit Tracer | Separate environment: Circuit Tracer 0.5.0, NNsight 0.6.0, Transformers 4.57.3; requires per-layer dictionaries and gradient permission |
+| Quantization | Separate LLM Compressor 0.15.0; outputs compressed-tensors packed weights |
+| SliceGPT | Separate environment pinned to upstream commit `183cd92d8469bf3f1e979585a08dc382692bfbed`; Llama checkpoint |
+| ROME, MEMIT | Pinned EasyEdit source and separate environment; requires weight-edit and gradient permissions |
+| Persistent Python | Linux and Bubblewrap; host grants Python and weight-write permissions separately |
 
-安装命令、数据获取方式和完整示例参数见[工具说明](mcp-tools.md)。研究目录中的 EWC、ReFT、角色蒸馏等扩展候选由后续实验选择；设计目录保留它们各自的候选状态。
+See [tool usage](mcp-tools.md) for installation commands, data acquisition and full example arguments. Future experiments will select extension candidates such as EWC, ReFT and role distillation from the research directory; the design catalog retains their respective candidate statuses.
 
-## 接手位置
+## Where to continue
 
-修改工具时，先看 `src/weight_programming/inspection.py` 的登记定义，再进入对应模块。算法新增为现有工具的 `method`（方法参数），模型差异由后端解析。`examples/` 保留每组能力的实际用法。
+When modifying a tool, first inspect registration definitions in `src/weight_programming/inspection.py`, then the relevant module. New algorithms are added as a `method` parameter of an existing tool; backends resolve model differences. `examples/` contains actual usage for each capability group.
 
-公开仓库为 `ZeroTang05/WSP-toolkit`，分支为 `main`。`SOURCE_MANIFEST.json` 记录发布文件摘要。当前源码提交可通过 `git rev-parse HEAD` 查询。
+The public repository is `ZeroTang05/WSP-toolkit`, branch `main`. `SOURCE_MANIFEST.json` records release-file digests. Use `git rev-parse HEAD` to query the current source commit.
 
-本轮开发和验证使用本地 CPU。模型与数据下载保留在本机缓存，临时模型产物由示例自动回收。0.6B 完整效果实验和 4B 专业多智能体工作流仍按研究协议推进；工具开发的交付物是这里列出的接口、方法、示例和可复查产物格式。
+This development and validation used a local CPU. Downloaded models and data remain in the local cache; examples automatically clean up temporary model artifacts. Complete 0.6B effectiveness experiments and the 4B professional multi-agent workflow continue under their research protocols. Tool development delivers the interfaces, methods, examples and inspectable artifact formats listed here.

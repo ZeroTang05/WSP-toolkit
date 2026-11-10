@@ -1,4 +1,4 @@
-"""从已保存的激活读取层级预测和线性探针结果。"""
+"""Read layerwise predictions and linear probe results from saved activations."""
 
 import numpy as np
 import torch
@@ -6,7 +6,7 @@ from torch.nn import functional as F
 
 
 def activation_rows(artifacts, artifact_id, sample_indices=None, token_position=None):
-    """按各样本的有效词元定位激活，默认取最后一个词元。"""
+    """Select activations by valid token position in each sample, defaulting to the last token."""
     array, info = artifacts.array(artifact_id)
     if info["axes"] != ["sample", "token", "channel"]:
         raise ValueError("Expected an activation array with sample, token and channel axes")
@@ -21,13 +21,13 @@ def activation_rows(artifacts, artifact_id, sample_indices=None, token_position=
 
 
 class RepresentationTools:
-    """在与原前向相同的版本和位置上分析已有激活。"""
+    """Analyze saved activations at the version and sites of the original forward pass."""
 
     def __init__(self, tools):
         self.tools = tools
 
     def _lens_sites(self, site_ids):
-        """将层级读出的逻辑站点映射到前向快照。"""
+        """Map layerwise readout sites to forward snapshots."""
         sites = {}
         for site_id in site_ids:
             site = self.tools._sites.get(site_id)
@@ -37,13 +37,13 @@ class RepresentationTools:
         return sites
 
     def _lens_logits(self, tensor):
-        """直接读出和调优透镜使用同一个最终归一化与词表头。"""
+        """Direct readout and the tuned lens share the same final normalization and vocabulary head."""
         backend = self.tools.forward.backend
         head = backend.model.get_output_embeddings()
         return head(backend.decoder.norm(tensor.to(head.weight.dtype))).float()
 
     def fit_tuned_lens(self, run_id, site_ids, sample_indices, *, steps=24, learning_rate=0.001, token_position=None):
-        """由 Python 宿主用真实校准快照拟合仿射变换，模型参数保持冻结。"""
+        """The affine transformation is fitted by the Python host with a true calibration snapshot, and the model parameters remain frozen."""
         tools = self.tools
         run = tools.get_run(run_id)
         backend = tools.forward.backend
@@ -73,7 +73,7 @@ class RepresentationTools:
                 optimizer = torch.optim.Adam((weight, bias), lr=learning_rate)
 
                 def loss():
-                    # 作者实现用零初始化的残差仿射变换，初始读出等于直接读出。
+                    # The authors use a zero-initialized residual affine transformation, so the initial readout matches the direct readout.
                     prediction = self._lens_logits(hidden + F.linear(hidden, weight, bias)).log_softmax(dim=-1)
                     return F.kl_div(prediction, target, log_target=True, reduction="batchmean")
 
@@ -100,7 +100,7 @@ class RepresentationTools:
     @torch.inference_mode()
     def scan_lens(self, run_id, site_ids, method="logit_lens", sample_indices=None, token_position=None, topk=5,
                   target_token=None, decoder_ref=None):
-        """用模型的最终归一化和词表头读取各层残差。"""
+        """Read each layer’s residual using the model’s final normalization and vocabulary head."""
         tools = self.tools
         run = tools.get_run(run_id)
         backend = tools.forward.backend
@@ -160,7 +160,7 @@ class RepresentationTools:
 
     def probe_representation(self, artifact_id, labels, train_indices, evaluation_indices, seed=0,
                              control_labels=None, input_baseline_artifact_id=None, token_position=None, fit_eraser=False):
-        """拟合线性分类器并在独立样本上比较真实标签、控制和输入基线。"""
+        """Fit a linear classifier and compare ground truth labels, controls and input baselines on independent samples."""
         from sklearn.linear_model import LogisticRegression
 
         artifacts = self.tools.artifacts
@@ -225,7 +225,7 @@ class RepresentationTools:
 
     @staticmethod
     def _fit_eraser(rows, labels, train, evaluation):
-        """用作者实现只在训练行拟合 LEACE，比较训练和复核行的线性关联。"""
+        """Fit LEACE only on training rows using the authors’ implementation, then compare linear associations on training and evaluation rows."""
         from concept_erasure import LeaceEraser
 
         classes = np.unique(labels[train])
@@ -233,7 +233,7 @@ class RepresentationTools:
             raise ValueError("LEACE supports up to 4096 channels and 32 classes per fit")
         activations = torch.as_tensor(rows, dtype=torch.float64)
         targets = torch.as_tensor(labels[:, None] == classes[None, :]).to(activations)
-        # 采用论文闭式投影，保留原库的协方差估计，关闭额外的方差约束。
+        # The paper's closed-form projection is used to retain the covariance estimate of the original library and turn off additional variance constraints.
         eraser = LeaceEraser.fit(activations[train], targets[train], constrain_cov_trace=False)
         erased = eraser(activations)
         packed = torch.cat((eraser.proj_left, eraser.proj_right.T, eraser.bias[:, None]), dim=1)

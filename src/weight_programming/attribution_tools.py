@@ -1,4 +1,4 @@
-"""用真实词元嵌入和显式基线计算目标输出的归因。"""
+"""Compute attribution of target output using ground-truth token embeddings and explicit baselines."""
 
 from time import perf_counter
 
@@ -8,7 +8,7 @@ from .evaluation_tools import aligned_completion
 
 
 class AttributionTools:
-    """在冻结模型上计算梯度，并使用共用预算与产物格式。"""
+    """Compute gradients on a frozen model using shared budgets and artifact formats."""
 
     def __init__(self, forward, versions, artifacts):
         self.forward = forward
@@ -18,7 +18,7 @@ class AttributionTools:
     def attribute_output(self, variant_id, text, baseline_text, target_token=None, alternative_token=None,
                          query_position=None, steps=16, method="integrated_gradients", chosen=None,
                          rejected=None, aggregation="sum"):
-        """在两组同长度词元嵌入之间积分，返回每个位置的有符号贡献。"""
+        """Integrate between two sets of token embeddings of the same length, returning the signed contribution of each position."""
         if method == "contrastive_sequence":
             return self._contrastive_sequence(variant_id, text, baseline_text, chosen, rejected, aggregation, steps)
         backend = self.forward.backend
@@ -44,7 +44,7 @@ class AttributionTools:
         return {**result, "query_position": query}
 
     def _contrastive_sequence(self, variant_id, text, baseline_text, chosen, rejected, aggregation, steps):
-        """固定两段回答，归因输入词元如何改变回答的对数概率分差。"""
+        """Hold two responses fixed and attribute how input tokens affect their log-probability difference."""
         backend, policy = self.forward.backend, self.forward.policy
         ids, baseline_ids = self._prompts(text, baseline_text)
         if chosen == rejected:
@@ -65,7 +65,7 @@ class AttributionTools:
                 scores = []
                 for target, continuation in zip(targets, continuations):
                     supplied = torch.cat((embeddings, continuation.expand(len(embeddings), -1, -1)), dim=1)
-                    # 最后 k 个输出从提示末词元开始，正好预测 k 个回答词元。
+                    # The last k outputs start at the final prompt token and predict exactly k answer tokens.
                     logprobs = torch.log_softmax(read(supplied, len(target)).float(), dim=-1)
                     selected = logprobs.gather(-1, target.expand(len(embeddings), -1).unsqueeze(-1)).squeeze(-1)
                     scores.append(selected.double().sum(-1) if aggregation == "sum" else selected.double().mean(-1))
@@ -86,7 +86,7 @@ class AttributionTools:
         return ids, baseline_ids
 
     def _integrate(self, variant_id, ids, baseline_ids, request, build_score, tokens_per_point, logits_per_point):
-        """共用嵌入插值、预算、真实前向记账和积分误差计算。"""
+        """Share embedding interpolation, budget checks, actual forward-pass accounting, and integration error calculation."""
         from captum.attr import IntegratedGradients
 
         backend, policy = self.forward.backend, self.forward.policy

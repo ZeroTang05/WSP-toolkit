@@ -1,46 +1,46 @@
-# 配对激活干预：从“哪里不同”到“改变那里会怎样”
+# Paired Activation Interventions: From Observed Differences to Causal Effects
 
-本文保留成文时的实验设置、结果与状态。当前项目进度见[项目状态](../../PROJECT_STATUS.md)。
+This report preserves the experimental setup, results, and status at the time of writing. See [Project status](../../PROJECT_STATUS.md) for current progress.
 
-2026-11-07。新增可执行诊断工具，并完成真实Qwen3-0.6B实验；不是数学能力提升或持久参数编辑实验。
+2026-11-07. An executable diagnostic tool and a real Qwen3-0.6B experiment are complete. This study measures activation interventions; it does not evaluate mathematical capability gains or persistent parameter edits.
 
-## 方法出处与工具位置
+## Method Sources and Implementation
 
-[Zhang与Nanda，ICLR 2024](https://arxiv.org/abs/2309.16042v2)系统研究activation patching中的输入扰动及指标选择。本实现按clean／corrupt／patched三次前向组织，保留多种指标，明确记录对齐与扰动假设。它填补统计观测与权重修改之间的诊断环节，不能自动生成正确的权重修改。
+[Zhang and Nanda, ICLR 2024](https://arxiv.org/abs/2309.16042v2) systematically study input corruptions and metric choices in activation patching. This implementation runs clean, corrupt, and patched forward passes, retains multiple metrics, and records alignment and corruption assumptions explicitly. It connects statistical observations to causal diagnosis without automatically determining a correct weight edit.
 
-专业术语上，工具读写的是**残差流激活**与**门控MLP的中间通道激活**，执行**反事实激活替换**。一个通道不自动对应一个独立、可命名的能力，也不能把整套模型功能称为可直接读取的“神经元信号流”。
+The tool reads and writes **residual-stream activations** and **intermediate channels in gated MLPs**, performing **counterfactual activation replacement**. A channel does not automatically represent an independent, nameable capability. The model's full computation cannot be treated as a directly readable, semantically labeled flow of neuron signals.
 
-接口`ActivationPatchingStudy.run`支持原始残差及down_proj输入，可选位置与通道；要求输入token长度相同并显式指定位置。记录原始logit difference、目标概率和目标log-prob，以及各自的变化和归一化量。异常会移除临时hook；模型执行锁避免与其他权重快照查询并发互相干扰。源码见`src/weight_programming/patching.py`。
+`ActivationPatchingStudy.run` supports residual-stream and `down_proj` input activations, with optional position and channel selection. Inputs must have equal token lengths, and positions must be specified explicitly. It records the original logit difference, target probability, target log-probability, their changes, and normalized effects. Temporary hooks are removed on exceptions; a model execution lock prevents interference with concurrent weight-snapshot requests. The implementation is in `src/weight_programming/patching.py`.
 
-这一工具属于独立的机制诊断扩展轨道。原作WSP只读前向／直接参数编程权限不包含它，不能把扩展干预结果算成原作50-pass独立实验的一部分。详见[权限与方法假设](../../docs/tool-permissions.md)。
+This tool belongs to an independent mechanistic-diagnosis extension. The original WSP permissions for read-only forward passes and direct parameter programming exclude these interventions. Their results therefore do not count toward the original independent 50-pass experiment. See [Permissions and method assumptions](../../docs/tool-permissions.md).
 
-## 真实实验
+## Experiment
 
-四组自行编写的首都补全对：France／Italy、Germany／Spain、Japan／China、Greece／Egypt。每组只替换一个国家token，两段输入均为5 tokens；目标与对比城市各是一个token。使用CPU FP32原模型，不训练、不修改权重。
+The study uses four manually written capital-completion pairs: France/Italy, Germany/Spain, Japan/China, and Greece/Egypt. Each pair replaces one country token. Both prompts contain 5 tokens, and each target or comparison city is a single token. The base model runs on CPU in FP32 without training or weight changes.
 
-每组扫描29个残差坐标、28个MLP输入位置，均替换最后一个输入位置的整向量；再增加全位置embedding替换对照。共232次配对请求、696次实际模型前向，成功232、失败0，脚本记录164.33秒。这个预算属于本诊断实验，不能称为原作协议预算。
+For each pair, the scan tests 29 residual coordinates and 28 MLP input sites, replacing the full vector at the final input position. An additional control replaces embeddings at all positions. There are 232 paired requests and 696 actual model forward passes: 232 successes, 0 failures, and 164.33 seconds recorded by the script. This is the diagnostic study's budget, separate from the original WSP protocol budget.
 
-定义单token分差`LD = logit(target) − logit(alternative)`，干预效应为`LD_patched − LD_corrupt`，归一化量为该效应除以`LD_clean − LD_corrupt`。它不是准确率，也不限定在[0,1]。
+For a single-token target, define `LD = logit(target) − logit(alternative)`. The intervention effect is `LD_patched − LD_corrupt`; its normalized value divides this effect by `LD_clean − LD_corrupt`. This metric is not accuracy and is not restricted to [0,1].
 
-| 输入对 | clean LD | corrupt LD | 最大正效应的MLP层 | LD改善 | 归一化变化 |
+| Input pair | Clean LD | Corrupt LD | MLP layer with largest positive effect | LD improvement | Normalized change |
 |---|---:|---:|---:|---:|---:|
-| France／Italy | 4.721 | −9.113 | 21 | 4.912 | 35.51% |
-| Germany／Spain | 9.738 | −8.839 | 22 | 6.591 | 35.48% |
-| Japan／China | 8.477 | −7.750 | 21 | 6.132 | 37.79% |
-| Greece／Egypt | 8.847 | −9.181 | 22 | 3.886 | 21.55% |
+| France/Italy | 4.721 | −9.113 | 21 | 4.912 | 35.51% |
+| Germany/Spain | 9.738 | −8.839 | 22 | 6.591 | 35.48% |
+| Japan/China | 8.477 | −7.750 | 21 | 6.132 | 37.79% |
+| Greece/Egypt | 8.847 | −9.181 | 22 | 3.886 | 21.55% |
 
-层号从0开始。上述位置是本次扫描的结果，不是工具默认值，也不能转移成原作Qwen3.5数学编辑位置。
+Layer indices start at 0. These sites were found by this scan; they are not tool defaults and do not establish editing sites for the original Qwen3.5 mathematics experiment.
 
-![真实模型配对激活图](../../docs/figures/patching-map.png)
+![Paired activation interventions on a real model](../../docs/figures/patching-map.png)
 
-[独立PDF图](../../docs/figures/patching-map.pdf)。原始结果、协议、预算及重算分析位于`artifacts/toolkit/activation-patching-v1/Qwen3-0.6B/`；完整逐请求记录在服务器，源码和数据哈希有绑定。
+[Standalone PDF](../../docs/figures/patching-map.pdf). Raw results, protocol, budget, and recomputed analysis are in `artifacts/toolkit/activation-patching-v1/Qwen3-0.6B/`. Complete per-request records remain on the server, bound to source and data hashes.
 
-## 实验分析
+## Analysis
 
-**干预存在明显的方向差异。** Germany／Spain在第22层MLP输入的替换提高分差6.591，而第27层的替换降低4.574，归一化为−24.62%。因此，“来自clean输入”的激活并不保证替换后改善。它可能与仍处于corrupt状态的其他路径不一致；不能据此把该层称为普遍有害。
+**Interventions have clear directional differences.** Replacing the layer 22 MLP input for Germany/Spain improves the logit difference by 6.591. At layer 27, the replacement reduces it by 4.574, a normalized change of −24.62%. An activation from the clean prompt can conflict with paths that remain in the corrupt state; these results do not establish that a layer is universally harmful.
 
-**正对照不是发现。** 最后残差位置被直接换成clean值后，下游同一归一化及读出当然会重现clean结果。四组的末残差及全embedding对照均为零误差，这证明干预边界与读出一致，不证明发现了关键电路。最后输入token本身未变化，因此只替换它的embedding也是零效应对照。
+**Positive controls do not establish a discovered mechanism.** Replacing the final residual with its clean value reproduces the clean result through the same downstream normalization and readout. Final-residual and full-embedding controls have zero error for all four pairs, confirming intervention boundaries and readout consistency. They do not establish discovery of a critical circuit. The final input token itself is unchanged, so replacing only its embedding is also a zero-effect control.
 
-**临时恢复与永久修复之间仍有缺口。** 局部激活能恢复约21.6%—37.8%的分差，不能直接推导某个权重矩阵该如何修改，更不能声称在一般输入上保持能力。后续需要真实任务失败对、不同扰动、位置／通道隔离、随机对照及持久参数候选的完整任务确认。
+**Temporary recovery leaves a gap to permanent repair.** Local activation replacements recover approximately 21.6%–37.8% of the logit difference. This does not directly determine a weight-matrix edit or establish capability preservation on general inputs. Follow-up work requires failures from real tasks, multiple corruptions, position/channel isolation, random controls, and full-task confirmation of persistent parameter candidates.
 
-当前证据说明工具可以在真实模型上测到上下文相关的正负因果效应。它与四模型BI／删层实验互补，但两项研究的数据与指标不同，不能把两张图合并推断同一个数学机制。
+The evidence establishes context-dependent positive and negative causal effects on a real model. It complements the four-model block-influence and layer-deletion study. The studies use different data and metrics, so their figures do not jointly identify a single mathematical mechanism.

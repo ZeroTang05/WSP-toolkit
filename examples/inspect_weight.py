@@ -1,4 +1,4 @@
-"""从本地模型读取一块权重，查看它的尺寸和整体大小。"""
+"""Read a block of weights from the local model and see its dimensions and overall size."""
 
 import argparse
 
@@ -6,14 +6,14 @@ from weight_programming import WeightStore
 
 
 def main():
-    """读取原始权重，并打印最常用的三个信息。"""
+    """Read the original weights and print three common properties."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--model', required=True, help='Local safetensors model directory')
     parser.add_argument('--edit-dir', required=True, help='Separate directory for edit records')
     parser.add_argument('--name', default='model.layers.0.mlp.down_proj.weight')
     args = parser.parse_args()
 
-    # WeightStore 将记录与原模型绑定。读取出的权重是一份独立副本。
+    # WeightStore binds the record to the original model. The weights read out are an independent copy.
     store = WeightStore(args.model, args.edit_dir)
     weight = store.load_original(args.name)
     print(f'Weight: {args.name}')

@@ -1,4 +1,4 @@
-"""把现有前向服务接到通用的模型观测工具。"""
+"""Connect existing forward services to common model observation tools."""
 
 from copy import deepcopy
 from functools import partial
@@ -37,12 +37,12 @@ _SITES = {"type": "array", "items": _ID, "uniqueItems": True}
 
 
 def result_schema(*fields):
-    """两种调用方式都能依赖的最小结果字段。"""
+    """Minimum result fields shared by both calling methods."""
     return {"type": "object", "required": list(fields)}
 
 
 class InspectionTools:
-    """在一个由宿主注册的检查点上发现、运行和读取观测。"""
+    """Discover, run, and read observations on a checkpoint registered by the host."""
 
     def __init__(self, forward, *, allow_edits=False, allow_interventions=False, allow_gradients=False,
                  comparison=None, training_data=None, allow_training=False, allow_python=False, kernel_python=None,
@@ -117,7 +117,7 @@ class InspectionTools:
         self.registry = ToolRegistry(self._specs(), permissions=permissions)
 
     def _specs(self):
-        """在同一处声明 Python 调用参数与 MCP 工具定义。"""
+        """Declare Python call parameters and MCP tool definitions in the same place."""
         teacher = object_schema({"mode": {"const": "teacher_forced"}, "variant_id": _ID,
                                  "texts": _TEXTS, "observe": _SITES,
                                  "topk": _INDEX, "token_logprobs": {"type": "boolean"}},
@@ -452,7 +452,7 @@ class InspectionTools:
         return tuple(spec for spec in specs if self.is_language_model or spec.name not in language_tools)
 
     def workspace_tools(self, workspace):
-        """解析宿主明确注册的主模型或比较模型。"""
+        """Resolve a master or comparison model explicitly registered by the host."""
         if workspace == "primary":
             return self
         if workspace == "comparison" and self.comparison is not None:
@@ -460,7 +460,7 @@ class InspectionTools:
         raise ValueError("No model is registered in the requested workspace")
 
     def describe_model(self, variant_id=None, workspace="primary"):
-        """返回模型的实际能力，供调用者选择可用站点。"""
+        """Returns the model's actual capabilities for the caller to select available sites."""
         if workspace != "primary":
             return self.workspace_tools(workspace).describe_model(variant_id)
         variant = self.versions.variant(self.variant_id if variant_id is None else variant_id)
@@ -508,7 +508,7 @@ class InspectionTools:
                 "comparison_variant_id": self.comparison.variant_id if self.comparison else None}
 
     def trace_circuit(self, run_id=None, method=None, sample_index=0, through_layer=None, query_position=None, **arguments):
-        """分析已采集的注意力，保留有效词元、来源和证据类型。"""
+        """Analyze the collected attention and retain valid tokens, sources and evidence types."""
         if method in ("path_patching", "acdc", "eap"):
             return self.edge_tracing.run(method, **arguments)
         if method == "feature_attribution_graph":
@@ -548,11 +548,11 @@ class InspectionTools:
         return {"artifact_id": artifact_id, **evidence}
 
     def read_artifact(self, artifact_id, region=None, offset=None, limit=None, workspace="primary"):
-        """从明确选定的工作区读取产物。"""
+        """Read artifacts from an explicitly selected workspace."""
         return self.workspace_tools(workspace).artifacts.read(artifact_id, region, offset, limit)
 
     def _tensor_info(self, name):
-        """补充执行模型中已知的轴和共享参数名称。"""
+        """Supplements the known axis and shared parameter names in the execution model."""
         from torch.nn import Embedding, Linear
 
         info = self.forward.store.tensor_info(name)
@@ -567,7 +567,7 @@ class InspectionTools:
         return {**info, "axes": axes, "aliases": list(self._aliases.get(id(parameter), []))}
 
     def list_tensors(self, variant_id, prefix="", layer=None, cursor=None, limit=20):
-        """按稳定顺序枚举模型权重，游标绑定模型和筛选条件。"""
+        """Enumerate model weights in stable order, with a cursor bound to the model and filters."""
         origins = self.versions.tensor_versions(variant_id)
         layer_prefix = ""
         if layer is not None:
@@ -590,13 +590,13 @@ class InspectionTools:
                 "next_cursor": next_cursor}
 
     def read_tensor(self, variant_id, name, region):
-        """读取检查点切片并保留来源、坐标和原始精度。"""
+        """Read checkpoint slices and preserve source, coordinates and original precision."""
         values, source = self.versions.read_slice(variant_id, name, region)
         return {"variant_id": variant_id, **self._tensor_info(name),
                 "source_variant_id": source, "region": region, "values": values.tolist()}
 
     def create_patch(self, parent_variant_id, edits, method):
-        """从小型内联数组或已有观测产物读取修改值。"""
+        """Read edit values from a small inline array or existing observation artifact."""
         def read_value(edit):
             if "values" in edit:
                 return edit["values"]
@@ -610,7 +610,7 @@ class InspectionTools:
 
     def project_weight(self, parent_variant_id, tensor, columns, direction=None, strength=1.0,
                        direction_artifacts=None, sample_indices=None, token_position=None):
-        """从显式方向或两组同坐标激活构造方向，复用已有投影算法。"""
+        """Construct a direction from an explicit vector or two sets of aligned activations, reusing existing projection algorithms."""
         import torch
 
         from .directions import contrast_direction
@@ -642,7 +642,7 @@ class InspectionTools:
         return {**result, "direction_artifact_id": direction_id}
 
     def merge_updates(self, parent_variant_id, method, patch_ids=(), adapter_ids=(), **options):
-        """让原生 PEFT 导入和训练更新复用同一合并实现。"""
+        """Let native PEFT imports and training updates reuse the same merge implementation."""
         factors = [self.delta._adapter(adapter_id, parent_variant_id) for adapter_id in adapter_ids]
         deltas = [{name: b @ a for name, (a, b) in update.items()} for update in factors]
         return merge_updates(self.versions, parent_variant_id, patch_ids, method,
@@ -650,13 +650,13 @@ class InspectionTools:
 
     def prune_and_compensate(self, parent_variant_id, tensor, input_artifact_id, method,
                              sparsity=None, mask_artifact_id=None, relative_damping=0.01):
-        """用同版本、同线性层的有效输入词元做校准。"""
+        """Calibrate with valid input tokens from the same version and linear layer."""
         inputs = self._input_rows(parent_variant_id, tensor, input_artifact_id)
         return prune_and_compensate(self.versions, self.artifacts, parent_variant_id, tensor, inputs,
                                     input_artifact_id, method, sparsity, mask_artifact_id, relative_damping)
 
     def _input_rows(self, parent_variant_id, tensor, input_artifact_id):
-        """分析与编辑共用对齐检查，只返回有效词元。"""
+        """Analysis and editing share alignment checks and only return valid tokens."""
         import torch
 
         values, info = self.artifacts.array(input_artifact_id)
@@ -673,7 +673,7 @@ class InspectionTools:
         return torch.from_numpy(values[valid])
 
     def get_run(self, run_id, workspace="primary"):
-        """查询本工作区账本上的运行状态。"""
+        """Query the running status on the ledger of this workspace."""
         if workspace != "primary":
             return self.workspace_tools(workspace).get_run(run_id)
         if re.fullmatch(RUN_PATTERN, run_id):
@@ -688,7 +688,7 @@ class InspectionTools:
                 "usage": row.get("details", {}), "artifacts": self.artifacts.references(run_id)}
 
     def close(self):
-        """回收由当前工具实例启动的隔离进程。"""
+        """Clean up isolated processes started by this tool instance."""
         if self.python is not None:
             self.python.close()
 
@@ -700,7 +700,7 @@ class InspectionTools:
 
     def model_forward(self, variant_id, mode, texts=None, prompts=None, observe=(),
                       topk=0, token_logprobs=False, n=1, max_new_tokens=None):
-        """把通用站点翻译成旧前向协议，复用预算、推理和落盘。"""
+        """Translate shared sites into the existing forward protocol and reuse budgeting, inference, and persistence."""
         self.versions.variant(variant_id)
         if mode not in self.forward.backend.modes:
             raise ValueError(f"Mode unavailable for this model: {mode}")
@@ -742,7 +742,7 @@ def open_inspection(model_dir, workspace, *, device="cpu", policy=None, revision
                     training_data=None, allow_training=False, allow_python=False, kernel_python=None,
                     fact_editor_python=None, fact_editor_source=None, quantization_python=None, slicegpt_python=None,
                     circuit_tracer_python=None, peft_adapters=()):
-    """从本地检查点打开研究工具，MCP 启动也调用此入口。"""
+    """Opening research tools from a local checkpoint, this entry is also called by MCP startup."""
     import torch
     from transformers import AutoConfig, AutoModelForCausalLM, AutoModelForSequenceClassification, AutoTokenizer
 

@@ -11,7 +11,7 @@ import torch
 
 
 def dare_drop(deltas, drop_probability, seed):
-    """按 DARE 用独立伯努利掩码稀疏化有效增量，再按保留概率重缩放。"""
+    """Apply DARE to sparsify effective updates using independent Bernoulli masks, then rescale by the retention probability."""
     if not math.isfinite(drop_probability) or not 0 <= drop_probability < 1:
         raise ValueError("DARE drop probability must be in [0, 1)")
     keep_probability = 1.0 - drop_probability

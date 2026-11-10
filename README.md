@@ -4,7 +4,7 @@
 
 WSP stands for **Weight-Space Programming**. The toolkit wraps PyTorch, Hugging Face Transformers, Safetensors, PEFT, and established research methods into tools for AI clients and researchers. Read model weights and internal activations, make a targeted change, and compare the resulting behavior with the base model. Edits are saved separately, with a fingerprint that ties each edit to its source checkpoint.
 
-[中文说明](README.zh-CN.md) · [Getting started](docs/getting-started.md) · [MCP and Python tools](docs/mcp-tools.md) · [Benchmarks](docs/benchmarks.md) · [Releases](https://github.com/ZeroTang05/WSP-toolkit/releases)
+[Getting started](docs/getting-started.md) · [MCP and Python tools](docs/mcp-tools.md) · [Benchmarks](docs/benchmarks.md) · [Releases](https://github.com/ZeroTang05/WSP-toolkit/releases)
 
 [Project status](PROJECT_STATUS.md) · [Tool inventory](docs/tool-inventory.md) · [Repository guide](docs/maintaining.md)
 

@@ -1,4 +1,4 @@
-"""从固定版本的 SST-2 训练划分提取分类工具示例输入。"""
+"""Extract classification tool example input from a fixed version of the SST-2 training partition."""
 
 import argparse
 import hashlib
@@ -10,7 +10,7 @@ import pyarrow.parquet as pq
 
 
 def main(output):
-    """保留真实句子、标签、原行号和来源摘要。"""
+    """Preserve real sentences, labels, original row numbers, and source hashes."""
     repo, revision = "stanfordnlp/sst2", "8d51e7e4887a4caaa95b3fbebbf53c0490b58bbb"
     path = Path(hf_hub_download(repo, "data/train-00000-of-00001.parquet", repo_type="dataset", revision=revision))
     rows = pq.read_table(path).slice(0, 512).to_pylist()

@@ -1,4 +1,4 @@
-"""通过 Microsoft SliceGPT 执行旋转与切片，保留可重载的跳连矩阵。"""
+"""Perform rotation and slicing with Microsoft SliceGPT, preserving reloadable skip connection matrices."""
 
 import hashlib
 from importlib.metadata import version
@@ -8,7 +8,7 @@ import sys
 
 
 def load_sliced_checkpoint(checkpoint):
-    """用上游切片配置重建层形状，再严格加载 SafeTensors。"""
+    """Rebuild the layer shape using the upstream slicing configuration before strictly loading SafeTensors."""
     import torch
     from safetensors.torch import load_file
     from slicegpt.adapters.llama_adapter import LlamaModelAdapter
@@ -35,7 +35,7 @@ def load_sliced_checkpoint(checkpoint):
 
 
 def main(request_path):
-    """在独立环境调用作者的归一化合并、PCA 旋转和切片。"""
+    """Run the authors’ normalization fusion, PCA rotation, and slicing in a separate environment."""
     import torch
     from safetensors.torch import load_file, save_file
     from slicegpt import layernorm_fusion, rotate

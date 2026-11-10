@@ -1,4 +1,4 @@
-"""在独立模型实例上训练 PEFT LoRA，并保存可复用的权重更新。"""
+"""Train PEFT LoRA on independent model instances and save reusable weight updates."""
 
 import json
 import math
@@ -21,13 +21,13 @@ _PAPERS = {
 
 
 class TrainingTools:
-    """使用宿主注册的训练数据和单独授权的计算预算。"""
+    """Use host-registered training data and a separately authorized compute budget."""
 
     def __init__(self, tools):
         self.tools = tools
 
     def _examples(self, rows, method):
-        """按训练目标解析宿主提供的回答和偏好对。"""
+        """Parse host-provided answer and preference pairs by training goals."""
         backend = self.tools.forward.backend
         maximum = self.tools.forward.policy.max_text_tokens
         examples = []
@@ -53,7 +53,7 @@ class TrainingTools:
 
     def train_update(self, parent_variant_id, dataset_id, case_ids, targets, method="lora", rank=4, alpha=8,
                      steps=1, learning_rate=0.001, beta=0.1, seed=11, materialize=False):
-        """输出标准 PEFT 适配器、统一更新 ID 和可选的密集补丁。"""
+        """Exports standard PEFT adapters, unified update IDs, and optional dense patches."""
         from peft import LoraConfig, TaskType, get_peft_model
 
         tools = self.tools
@@ -131,7 +131,7 @@ class TrainingTools:
         if method == "post_pruning_recovery":
             provenance["structural_source"] = {key: record[key] for key in ("variant_id", "method", "parameters")}
         adapter.eval()
-        # 候选的适配器需要调用方显式加载匹配的父模型。
+        # Candidate adapters require the caller to explicitly load a matching parent model.
         if parent_variant_id != tools.variant_id:
             adapter.peft_config["default"].base_model_name_or_path = ""
         method_provenance = {"papers": _PAPERS[method], "implementation_grade": "bounded PEFT adapter training"}

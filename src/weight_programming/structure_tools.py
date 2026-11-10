@@ -1,4 +1,4 @@
-"""复用深度和前馈通道剪枝，导出可独立重载的模型。"""
+"""Reuse depth and feedforward channel pruning to export independently reloadable models."""
 
 from contextlib import nullcontext
 from pathlib import Path
@@ -12,7 +12,7 @@ from .compression_exports import ExternalCompression, publish_checkpoint
 
 
 class StructureTools:
-    """用观测选择结构，再在独立模型上实际删层或删通道。"""
+    """Use observations to select a structure, then remove layers or channels from an independent model."""
 
     def __init__(self, tools, *, quantization_python=None, slicegpt_python=None):
         self.tools = tools
@@ -74,7 +74,7 @@ class StructureTools:
 
     def compress_model(self, variant_id, method, calibration_texts=None, drop_layers=None,
                        calibration_case_ids=None, fraction=None, group_size=128, target_hidden_size=None):
-        """输出改变张量形状或包含打包整数权重的检查点。"""
+        """Outputs checkpoints that change the shape of the tensor or contain packed integer weights."""
         from depth_programming import depth_variant
 
         tools = self.tools

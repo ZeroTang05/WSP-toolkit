@@ -1,54 +1,54 @@
-# 协作收益验证基准：HotpotQA候选文档阅读
+# Collaboration Benefits Verification Benchmark: HotpotQA Candidate Document Reading
 
-2026-11-06。落实用户“先验证多Agent，再抽取角色专用模型”的第一阶段。已实现并提交执行；尚无该任务质量结果，不能宣称多Agent有效。
+2026-11-06. This implements the first stage: verify multi-agent collaboration before extracting role-specific models. The experiment has been implemented and submitted; no task-quality results are available, so a collaboration benefit has not been established.
 
-## 已实现的实验对象
+## Implemented test subjects
 
-使用[HotpotQA官方数据](https://hotpotqa.github.io/)的distractor条件。每题所有方法均能读取同一组候选文档，不提供gold答案或支持事实。这里研究给定文档的多跳阅读，不称为开放域／fullwiki检索。
+Use the distractor setting of [HotpotQA official data](https://hotpotqa.github.io/). All methods for each question can read the same set of candidate documents, and no gold answers or supporting facts are provided. Here we study multi-hop reading of a given document, which is not called open domain/fullwiki retrieval.
 
-数据来源为`hotpotqa/hotpot_qa`，固定revision `1908d6afbbead072334abe2965f91bd2709910ab`，通过hf-mirror传输；保存各parquet的SHA256。官方评分代码固定`hotpotqa/hotpot` commit `3635853403a8735609ee997664e1528f4480762a`。保留原始源码，通过AST加载其函数而不改写评分公式，输出逐题答案、支持事实和联合指标。
+The data source is `hotpotqa/hotpot_qa`, fixed revision `1908d6afbbead072334abe2965f91bd2709910ab`, downloaded through hf-mirror; save the SHA256 of each parquet. Official scoring code fixed `hotpotqa/hotpot` commit `3635853403a8735609ee997664e1528f4480762a`. The original source code is retained, its functions are loaded through AST without rewriting the scoring formula, and per-question answers, supporting facts and joint indicators are output.
 
-训练集90,447题按ID哈希划分：128题校准、256题开发，其余保留给未来角色训练。构造时剔除与公开dev问题规范化文本完全相同的训练题；这不是近重复／预训练污染排除保证。完整公开dev为7,405题，只作冻结后的确认，不能称为官方test。
+The 90,447 training questions are split by ID hash: 128 questions for calibration, 256 questions for development, and the rest are reserved for future role training. Training questions whose normalized text exactly matches a public dev question are excluded during construction; this is not a near-duplicate/pre-training contamination exclusion guarantee. The complete public dev is 7,405 questions. It is only for confirmation after freezing and cannot be called an official test.
 
-`prepare_hotpot_collaboration.py`导出分开的inputs／labels。推理inputs只有ID、问题、候选文档标题和句子，输入校验拒绝多余字段。目标分区标签在全部预测完成后才加载评分；另外允许加载两个不相交的训练校准示例及其标签用于few-shot提示。该约束是进程内实验协议，不是操作系统访问隔离。
+`prepare_hotpot_collaboration.py` exports separate inputs/labels. Inference inputs only include ID, question, candidate document title and sentence, and input validation rejects redundant fields. Target partition labels are loaded for scoring only after all predictions are completed; in addition, two disjoint training calibration examples and their labels are allowed to be loaded for few-shot hints. This constraint is an in-process experimental protocol, not operating system access isolation.
 
-## 五个比较条件
+## Five comparison conditions
 
-| 条件 | 调用流程 | 分配的输出token上限 |
+| condition| Calling process| The upper limit of allocated output tokens|
 |---|---|---|
-| direct | 强提示直接跨文档推理并回答 | B |
-| self_refine | 初答→核查→修订 | B/4、B/4、其余 |
-| independent_vote | 三个独立答案，规范化后多数投票 | B/3、B/3、其余 |
-| collaborate | 分解角色→证据角色→答案角色；传递前序消息 | B/4、B/4、其余 |
-| no_communication | 同角色、同预算，但证据／答案角色看不到前序消息 | 与collaborate相同 |
+| direct | Strong prompts reason and answer directly across documents| B |
+| self_refine | Initial answer→check→revise| B/4, B/4, the rest|
+| independent_vote | Three independent answers, majority vote after normalization| B/3, B/3, the rest|
+| collaborate | Decompose role→Evidence role→Answer role; pass earlier messages| B/4, B/4, the rest|
+| no_communication | Same role, same budget, but the evidence/answer role cannot see the earlier messages| Same as collaborate|
 
-整数预算取floor，最后一调用补余数。投票不增加LLM裁判；平票取最早有效候选，其支持事实也取自该候选，不拼接gold事实。无合法候选时记格式失败。各条件最终使用相同JSON格式和解析规则；全部角色均保留完整原候选文档，因此没有只给协作角色额外信息。
+For integer budgets, round each allocation down and give the remainder to the last call. Voting does not add an LLM judge; tied votes take the earliest valid candidate, and its supporting facts are also taken from that candidate, and gold facts are not spliced. If there is no valid candidate, it is recorded as a format failure. Each condition ultimately uses the same JSON format and parsing rules; all roles retain the complete original candidate document, so no additional information is given only to the collaborative role.
 
-角色拆分借鉴[角色容量研究](https://arxiv.org/abs/2607.07548)，通信比较参照[Multiagent Debate](https://arxiv.org/abs/2305.14325)的协作问题；强单Agent对照依据[ACL 2024重新评估](https://aclanthology.org/2024.acl-long.331/)。当前固定三阶段阅读流程是本项目适配，不冒称这些论文算法的完整复现。
+Role splitting refers to [Role Capacity Research](https://arxiv.org/abs/2607.07548), communication comparison refers to [Multiagent Debate](https://arxiv.org/abs/2305.14325)’s collaboration issues; strong single Agent comparison basis [ACL 2024 re-evaluation](https://aclanthology.org/2024.acl-long.331/). The current fixed three-stage reading process is an adaptation for this project, and we do not pretend to be a complete reproduction of the algorithms of these papers.
 
-根据该ACL研究对demonstrations的发现，所有条件的每次调用都加入相同的两个训练示例，包含完整候选文档及正确输出格式；选取校准视图前两题，不依效果筛选。示例ID与提示哈希写入协议，检查与待评题目的ID及规范化问题均不重合。它是明确的two-shot强提示参照，仍不声称涵盖所有可能的单Agent提示优化。
+According to the findings of demonstrations in this ACL study, the same two training examples are added to each call of all conditions, including complete candidate documents and correct output formats; the first two questions of the calibration view are selected and are not filtered by effects. The example IDs and prompt hashes are recorded in the protocol, and neither example IDs nor normalized questions overlap with evaluated questions. It is an explicit two-shot strong prompt reference and still does not claim to cover all possible single-agent prompt optimizations.
 
-## 固定执行与选择规则
+## Fixed execution and selection rules
 
-首个候选模型为已下载的Qwen3-4B-Instruct-2507，是否足够强及是否获益均待验证。当前不增加训练或API教师费用。
+The first candidate is the downloaded Qwen3-4B-Instruct-2507. Its strength and any collaboration benefit remain to be measured. There are currently no additional training or API teacher fees.
 
-- B取384、768；随机种子11、22、33。每次调用用题目ID／种子／调用序号派生随机种子，temperature0.7、top_p0.9，非思考模式。
-- 单个原模型、BF16、SDPA，角色各自重新预填充，不共享跨角色KV。序列超过模型最大上下文时明确失败，不静默裁剪文档。
-- 所有开发条件共256×5×2×3＝7,680次完整问题流程。它是训练派生开发比较，不是官方质量结果，也不是8题执行测试。
-- 对每个预算，在direct/refine/vote中以开发答案EM选择最强参照；再选“协作减参照”增益最大的预算，同增益选较低预算。
-- 若两个预算均无正开发增益，记录负结果，不自动进入角色专用化；下一步应研究任务／流程适配。
-- 若开发增益为正，冻结参照和预算，在完整公开dev上对collaborate、选定参照和no_communication各跑3种子，共66,645次完整流程。
-- 确认主比较为协作对开发选定参照；按种子和题目配对bootstrap，区间下界大于0才通过本协议的协作效果门槛。不在公开dev重选最有利预算或参照。
+- B takes 384, 768; random seeds 11, 22, 33. Each call uses the question ID/seed/call sequence number to derive a random seed, temperature0.7, top_p0.9, non-thinking mode.
+- A single base model, BF16, SDPA, each role is prefetched separately, with no cross-role KV cache sharing. Explicit failure when the sequence exceeds the model's maximum context does not silently crop the document.
+- A total of 256×5×2×3=7,680 complete problem processes for all development conditions. It is a training-derived development comparison, not an official quality result, nor an 8-question execution test.
+- For each budget, use the development answer EM in direct/refine/vote to select the strongest reference; then select the budget with the greatest gain from "collaboration minus reference", and select the lower budget with the same gain.
+- If there is no positive development gain in both budgets, a negative result is recorded and role specialization is not automatically entered; the next step should be to study task/process adaptation.
+- If the development gain is positive, freeze the reference and budget, and run 3 seeds each for collaborate, selected reference, and no_communication on the full public dev, for a total of 66,645 complete processes.
+- Confirm that the main comparison is the reference for the selected collaboration pair development; use a bootstrap paired by seed and question, and the lower bound of the interval is greater than 0 to pass the collaboration effect threshold of this protocol. Do not re-select the most advantageous budget or reference in public dev.
 
-三个种子只描述推理随机性，不是三个训练种子。格式遵循也是结构化任务结果的一部分，但若收益主要来自格式合法率，须单独解释，不能称一般推理能力提升。答案EM为预先指定主指标；F1、支持事实F1和joint指标共同报告，不能只报告有利的一项。
+Three seeds only describe inference randomness, not three training seeds. Format compliance is also part of the results of structured tasks, but if the benefits mainly come from the format legality rate, it must be explained separately and cannot be said to be an improvement in general reasoning ability. The answer EM is to pre-specify the main indicator; F1, supporting fact F1 and joint indicator are reported together, and do not selectively report only favorable metrics.
 
-## 效率与角色抽取的连接
+## The connection between efficiency and role extraction
 
-相同总输出上限只控制一部分资源。实际输入tokens、输出tokens、每次调用耗时、流程耗时及显存逐项保存；多角色重复读取文档的额外prefill必须计入。两个预算点构成初始质量—成本比较，不能仅凭同token上限称完全等计算。
+The shared total output cap controls only part of the resources. The actual input tokens, output tokens, each call time, process time and GPU memory are saved item by item; additional prefill for multiple roles to repeatedly read documents must be included. The two budget points constitute the initial quality-cost comparison, which cannot be calculated solely based on the upper limit of the same token.
 
-开发轨迹会保存planner、evidence_reader、answerer的完整输入和输出。通过协作门槛后，从保留的训练题另行生成角色监督；当前开发题不能再并入训练后冒称未见效果。专用模型阶段仍需普通角色LoRA、统一多任务学生、非LLM程序选择对照。当前没有角色delta训练。
+The development track will save the complete input and output of the planner, evidence_reader, and answerer. After passing the collaboration threshold, role supervision will be generated from the retained training questions; the current development questions can no longer be incorporated into the training and then falsely claimed to have no effect. The special model stage still requires common role LoRA, unified multi-tasking student, and non-LLM program selection and control. There is currently no role delta training.
 
-代码入口：
+Code entry:
 
 ```sh
 .venv-bench/bin/python src/prepare_hotpot_collaboration.py \
@@ -61,6 +61,6 @@
   --confirm-if-positive
 ```
 
-服务器仍仅用GPU0及统一GPU锁。运行器冻结四个源码文件；准备作业`job-mw542h8m-9518`当前在下载，最新协调作业为`job-mw54pcsb-e5d4`，等待实际下载进程989786。较早的协调尝试中，一次因包装PID不匹配退出，另一次在等待阶段被主动终止以补全相同训练示例对照；均未开始GPU评测。下载从未重启，未将不同提示条件混入结果。
+The server still only uses GPU0 and unified GPU lock. The runner freezes four source code files; the preparation job `job-mw542h8m-9518` is currently being downloaded, and the latest coordination job is `job-mw54pcsb-e5d4`, waiting for the actual download process 989786. Among the earlier coordination attempts, one exited due to package PID mismatch, and the other was actively terminated during the waiting stage to complete the same training example comparison; neither GPU evaluation was started. The download was never restarted, and different prompt conditions were not mixed into the results.
 
-已通过三项针对性数值／语义检查：相同文档权限下只有消息路径发生改变；投票与预算符合定义；逐题／joint聚合与固定官方原始评估函数一致。这些检查只支持实现语义，不计为协作收益。
+It has passed three targeted numerical/semantic checks: only the message path has changed under the same document permissions; voting and budgeting are consistent with the definition; per-question and joint aggregation is consistent with the fixed official original evaluation function. These checks only support implementation semantics and do not count as collaboration benefits.

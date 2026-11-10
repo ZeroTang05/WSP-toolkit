@@ -1,37 +1,37 @@
-# GPU驻留时间预算对照
+# GPU residence-time budget comparison
 
-日期：2026-11-06。独立于原21查询矩阵；此协议实施前已见首种子的fixed/random/greedy/BO开发代理及fixed完整确认，尚未见主LLM结果。属于新增对照，不称完全事前预注册。
+Date: 2026-11-06. This is a new comparison separate from the original 21-query matrix. Before this protocol was implemented, the first seed’s fixed, random, greedy, and BO development proxies and the full fixed-method confirmation had been seen; the main LLM result had not. This is not a fully prospective preregistration.
 
-## 方法来源与保持不变的部分
+## Method sources and parts that remain unchanged
 
-沿用LoRA训练方向、Task Arithmetic全局网格参照、四深度组适配和声明的Gardner约束BO简化基线。时间预算只改变实验调度／候选可用性，不是新权重算法。方法到工具的契约、开发64题、保护32题、21级系数、bootstrap和最终保留集均沿用现有定义。旧V2源码与结果不覆盖。
+The experiment retains the LoRA training direction, the Task Arithmetic global-grid reference, the four-depth-group adaptation, and the declared simplified Gardner-style constrained BO baseline. The time budget changes scheduling and candidate availability, not the weighting algorithm. The method-to-tool contract, 64 development questions, 32 protection questions, 21 coefficient levels, bootstrap, and final held-out set retain their existing definitions. The old V2 source code and results are not overwritten.
 
-比较固定全局网格、random、greedy、BO、LLM；每种方法使用同一模型和同一种子的方向。固定网格仍只有21个全局点，不能靠重复点浪费预算以伪装等成本。其他策略最多256次查询；若先撞到查询上限则标记censored并停止矩阵，不能作为完成的时间预算结果。
+Comparison of fixed global grid, random, greedy, BO, LLM; each method uses the same model and the same seed-specific direction. The fixed grid still only has 21 global points, and the budget cannot be wasted on duplicate points to create an appearance of equal cost. Other strategies have a maximum of 256 queries; if the query upper limit is hit first, the run is marked censored and the matrix is ​​stopped, which cannot be used as the completed time budget result.
 
-## 时钟与共同预算
+## Clock and common budget
 
-新增`Lab.gpu_lock_wait_seconds`只测量申请本项目GPU0文件锁的等待时间，不改变数值运算。新预算运行以main入口为起点，减去该等待，形成active时间。它包含输入／来源检查、目标模型加载、指纹与方向准备、控制器加载、所有策略决策及目标推理；解释器／模块import启动不计，先前共享LoRA训练另报。因此其准确名称为**含加载的GPU驻留墙钟预算**，不是全部项目经济成本、能耗或跨机器等价成本。
+The new `Lab.gpu_lock_wait_seconds` only measures the waiting time for applying for the GPU0 file lock of this project and does not change the numerical operation. The new budget run starts at the main entry point; subtracting this wait yields active time. It includes input/source checking, target model loading, fingerprint and direction preparation, controller loading, all strategy decisions and target inference; interpreter/module import startup is not included, and previously shared LoRA training is reported separately. Therefore its accurate name is **GPU resident wall clock budget with loading**, not the full project economic cost, energy consumption, or cross-machine equivalent cost.
 
-每模型／种子先重新运行完整21点固定网格校准；该运行的active总时间B作为同模型／种子其他策略的共同预算。固定校准自身复用为固定参照，不伪造第二次独立固定运行。B不由测试准确率确定，不把含排队的旧setup时间当成纯加载成本。
+Each model/seed first reruns a complete 21-point fixed grid calibration; the total active time B of this run is used as a common budget for other strategies of the same model/seed. The fixed calibration reuses itself as a fixed reference without falsifying a second independent fixed run. B is not determined by the test accuracy, and the old setup time including queuing is not regarded as a pure loading cost.
 
-只允许完成时间≤B的候选进入最优选择。若加载／决策耗尽B，没有候选及时完成，则退回未修改基座，并明确标记“无预算内完成观测”，不伪造基座测量。当前采用软截止：正在执行的提案／评估可能跨过B，仍记录其实际耗时、tokens与结果，但晚到候选不能入选。完整active用时与overrun分别报告。
+Only candidates with completion time ≤ B are allowed to enter the optimal selection. If loading/decision-making runs out of B and no candidate is completed in time, the base will be returned unmodified and clearly marked "no observation completed within budget" without falsifying base measurements. Currently, a soft cutoff is used: the proposal/evaluation being executed may cross B, and its actual time consumption, tokens, and results are still recorded, but late-arriving candidates cannot be selected. The complete active time and overrun are reported separately.
 
-这是一种“共同预算时刻可获得的incumbent”对照，**不是严格相同实际消耗时间**。若论文需要后者，还须加入可中断执行／外部监控及资源释放时间验证。不能删除晚到调用成本，把软截止包装成严格预算控制。峰值显存同时报告，以显示常驻控制器的资源差异。
+This is a comparison of the "incumbent available at the common budget moment", **not strictly the same as the actual time spent**. If the paper requires the latter, interruptible execution/external monitoring and resource release time verification must also be added. You cannot remove the cost of late calls and wrap soft deadlines into strict budget control. Peak memory is also reported to show resource differences for resident controllers.
 
-## 执行与审计
+## Execution and Audit
 
-`optimize_public_budget.py`保存逐候选active时间、deadline可用性、策略决策耗时、LLM输入输出tokens及未执行的提案；`run_budget_matrix.py`冻结源码／合同，先smoke再运行四模型×三训练种子×五策略。smoke使用4题开发／4题保护、至少30秒预算，仅验证执行与时钟，不据此选择正式超参数。
+`optimize_public_budget.py` saves candidate active time, deadline availability, strategy decision time, LLM input and output tokens and unexecuted proposals; `run_budget_matrix.py` freezes the source code and contract, runs a smoke test, then runs four models × three training seeds × five strategies. The smoke test uses 4 development and 4 protection questions, with a budget of at least 30 seconds. It only verifies execution and clock, and does not select formal hyperparameters based on this.
 
-`audit_search.py`继续支持原V2，并独立重算新轨道的候选合法性、保护统计、截止资格、最优选择与base/delta绑定。CPU测试覆盖更优候选晚到必须排除、篡改截止资格必须拒绝，以及无预算内完成观测时保留基座。审计只核对记录的一致性，不是GPU时间独立重测。
+`audit_search.py` continues to support the original V2, and independently recalculates the candidate validity, protection statistics, deadline eligibility, optimal selection and base/delta binding of the new track. CPU tests check that better candidates arriving late are excluded, tampered deadline eligibility is rejected, and the base model is retained when no observation completes within budget. The audit only checks the consistency of the records, not independent retesting of GPU time.
 
-完整搜索后仍需在固定评估后端、batch与数据上确认实际选中模型，优先复用主确认中数学等价的参数状态；不得复用其计时为新搜索计时。开发代理改善与实际任务改善分别报告。本轨道尚未完成，没有成本优势结论。
+After a complete search, the actual selected model still needs to be confirmed on the fixed evaluation backend, batch and data, and the mathematically equivalent parameter state in the main confirmation will be reused first; its timing must not be reused for new search timing. Development proxy improvements are reported separately from actual task improvements. This track has not yet been completed and no cost advantages have been concluded.
 
-## 完整保留集衔接
+## Full held-out set confirmation
 
-`run_budget_confirmation.py`已提交，等待原主确认与预算搜索矩阵都完成，使用原主确认冻结的benchmark运行器及其全部helper，不换评估后端。包括完整GSM8K（batch32）、ARC-C和HellaSwag（batch8），并复用原模型与标准LoRA参照。完成后自动运行同一跨模型／种子统计脚本；搜索完成标记本身不算质量确认完成。
+`run_budget_confirmation.py` has been submitted and is waiting for the original main confirmation and the budget search matrix to be completed. Use the frozen benchmark runner and all its helpers used in the original main confirmation without changing the evaluation backend. Includes complete GSM8K (batch32), ARC-C and HellaSwag (batch8), and reuses the base model and standard LoRA reference. The same cross-model/seed statistics script is automatically run upon completion; the search completion mark itself does not count as quality confirmation completion.
 
-`confirmation_state.py`从原始模型／tokenizer指纹、delta manifest与编译系数识别参数状态。整数1与浮点1.0会被实际编译器转换为同一float，因此统一表示；非零系数不作近似舍入。全零计划在该执行器中跳过delta hooks，才可复用native base。不同权重／非零系数不能凭相近指标或张量距离合并。
+`confirmation_state.py` identifies parameter state from base model/tokenizer fingerprint, delta manifest and compilation coefficient. The integer 1 and the floating point 1.0 will be converted to the same float by the actual compiler, so they are expressed uniformly; non-zero coefficients are not approximately rounded. An all-zero plan skips delta hooks in this executor, allowing reuse of the native base. Different weights/non-zero coefficients cannot be combined based on similarity indicators or tensor distances.
 
-已有结果须通过完整逐题计分、源码、执行设置及状态绑定检查；不同目录若代表同一状态却给出不同逐题结果，会停止复用并要求调查。新状态单独完整推理；已存在但不完整的输出保留并停止，不因观察超时重新启动。所有复用路径和标记写入index，不虚构新计时或新独立重复。
+Existing results must pass complete per-question scoring, source code, execution settings and status binding checks; if different directories represent the same status but give different per-question results, reuse will be stopped and investigation required. New states are fully inferred independently; existing but incomplete outputs are retained and stopped and are not restarted due to observation timeouts. All reused paths and markers are written to the index, no new timings or new independent repeats are created.
 
-当前四项CPU检查通过，实际Qwen0.6原模型、标准LoRA和0.8选中状态的三个绑定互异，选中plan与已完成正式结果绑定一致。完整预算确认尚未开始推理，不能将这些检查称为端到端结果。
+The current four CPU checks have passed. The actual three bindings of the original Qwen0.6 model, standard LoRA and 0.8 selected states are different from each other. The selected plan is consistent with the completed official result binding. Full budget confirmation has not yet begun inference and these checks cannot be called end-to-end results.

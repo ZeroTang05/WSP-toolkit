@@ -1,4 +1,4 @@
-"""用真实模型拟合小字典并从 MCP 生成特征归因图。"""
+"""Fit small dictionaries with real models and generate feature attribution plots from MCP."""
 
 import argparse
 import asyncio

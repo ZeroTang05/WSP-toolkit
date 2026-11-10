@@ -1,3 +1,3 @@
-# 本地素材
+# Local assets
 
-`illustrations/` 保存项目目录中已有的插图文件，按原文件名保留。工具库的科学图表保存在 `docs/figures/`。
+`illustrations/` holds illustration files already present in the project directory, retaining their original filenames. Scientific figures for the toolkit are in `docs/figures/`.

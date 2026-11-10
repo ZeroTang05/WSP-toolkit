@@ -1,4 +1,4 @@
-"""用真实检查点演示补丁创建、运行、撤销和跨工作区重放。"""
+"""Demonstrate patch creation, running, undoing and replaying across workspaces with real checkpoints."""
 
 import argparse
 import asyncio
@@ -15,7 +15,7 @@ from weight_programming import open_inspection
 
 
 def observation(variant_id):
-    """在三次前向里使用同一句话和同一层。"""
+    """Use the same sentence and layer for all three forward passes."""
     return {"variant_id": variant_id, "mode": "teacher_forced", "texts": ["The capital of France is"],
             "observe": ["block.0.residual_out"]}
 
@@ -93,7 +93,7 @@ async def main(model):
                                                              "sparsity": 0.1})
                 assert all(result["realized_zero_fraction"] >= 0.09 for result in (wanda, fixed, adaptive))
 
-        # 在新的工作目录导入补丁，用同一个 ID 找回候选。
+        # Import the patch in the new working directory and retrieve the candidate with the same ID.
         replay = root / "replay"
         shutil.copytree(workspace / bundle["bundle_path"], replay / "imports" / patch_id)
         python = open_inspection(model, replay, allow_edits=True).registry
@@ -102,7 +102,7 @@ async def main(model):
         assert replayed["variant_id"] == variant
         assert python.call("read_tensor", {"variant_id": variant, **read_request})["values"] == after_weight["values"]
 
-        # 完整检查点从另一个目录重新加载，并与原候选的前向结果核对。
+        # The full checkpoint is reloaded from another directory and checked against the forward results of the original candidate.
         reloaded = open_inspection(workspace / exported["checkpoint_path"], root / "reload").registry
         reloaded_id = reloaded.call("describe_model", {})["variant_id"]
         restored_weight = reloaded.call("read_tensor", {"variant_id": reloaded_id, **read_request})

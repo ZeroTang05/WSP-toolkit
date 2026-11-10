@@ -1,4 +1,4 @@
-"""用真实校准文本导出 GPTQ 与 AWQ，并重新加载打包检查点。"""
+"""Export GPTQ and AWQ with real calibration text and reload packed checkpoints."""
 
 import argparse
 import asyncio

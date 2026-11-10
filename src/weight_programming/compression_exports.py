@@ -1,4 +1,4 @@
-"""发布结构或量化检查点，并隔离上游压缩运行环境。"""
+"""Release structural or quantized checkpoints and isolate the upstream compression runtime environment."""
 
 from contextlib import contextmanager
 import json
@@ -15,7 +15,7 @@ from .worker_runtime import run_model_worker
 
 
 def publish_checkpoint(versions, output, record):
-    """将完整检查点和清单一并发布到共享导出目录。"""
+    """Publish the complete checkpoint and manifest to the shared export directory."""
     root = versions.root / "exports" / "structures"
     export_id = _digest(record)
     (output / "structure_manifest.json").write_text(json.dumps(record, indent=2, allow_nan=False), encoding="utf-8")
@@ -29,7 +29,7 @@ def publish_checkpoint(versions, output, record):
 
 
 class ExternalCompression:
-    """将父模型与校准词元交给宿主指定的独立 Python。"""
+    """Pass the parent model and calibration tokens to a standalone Python specified by the host."""
 
     def __init__(self, tools, quantization_python=None, slicegpt_python=None):
         self.tools = tools
@@ -37,7 +37,7 @@ class ExternalCompression:
         self.slicegpt_python = self._register(slicegpt_python, ("llama",), "SliceGPT")
 
     def _register(self, python, architectures, name):
-        """只登记宿主提供且符合模型适配范围的运行环境。"""
+        """Register only host-provided environments compatible with the model."""
         if python is None:
             return None
         if not self.tools.allow_edits or self.tools.forward.backend.identity["model_type"] not in architectures:
@@ -49,7 +49,7 @@ class ExternalCompression:
 
     @contextmanager
     def _stage(self, variant_id, method, calibration_texts, python, worker, **options):
-        """两种后端共用校准、父版本覆盖和暂存目录。"""
+        """Both backends share calibration, parent version overrides, and staging directories."""
         if python is None:
             raise ValueError(f"Register a Python environment for {method}")
         tools = self.tools
@@ -75,7 +75,7 @@ class ExternalCompression:
             yield directory / "checkpoint", report, original_bytes, calibration
 
     def quantize(self, variant_id, method, calibration_texts, group_size):
-        """验证实际保存的是 4 位打包张量，再登记导出清单。"""
+        """Verify that the saved tensor is packed to 4 bits, then register the export manifest."""
         with self._stage(variant_id, method, calibration_texts, self.quantization_python, "quantization_worker.py",
                          group_size=group_size) as (output, report, original_size, calibration):
             config = json.loads((output / "config.json").read_text(encoding="utf-8"))["quantization_config"]
@@ -110,7 +110,7 @@ class ExternalCompression:
             return publish_checkpoint(self.tools.versions, output, record)
 
     def slice(self, variant_id, calibration_texts, target_hidden_size):
-        """验证新隐藏宽度和权重文件，再发布可供 SliceGPT 重新打开的产物。"""
+        """Verify the new hidden width and weight files before publishing an artifact that SliceGPT can reload."""
         tools = self.tools
         width = tools.forward.backend.hidden_size
         if not 0 < target_hidden_size < width or target_hidden_size % 8:

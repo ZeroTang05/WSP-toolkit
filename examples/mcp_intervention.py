@@ -1,4 +1,4 @@
-"""用真实模型测量激活替换、消融和候选层扫描。"""
+"""Measure activation replacement, ablation, and candidate layer scanning with real models."""
 
 import argparse
 import asyncio

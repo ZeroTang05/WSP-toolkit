@@ -15,6 +15,7 @@ if __name__=='__main__':
     p.add_argument('--output',type=Path,required=True);a=p.parse_args()
     report=dict(harness_method_sha256=hashlib.sha256(inspect.getsource(HFLM._encode_pair).encode()).hexdigest(),
         implementation_sha256=hashlib.sha256((Path(__file__).parent/'search_metrics.py').read_bytes()).hexdigest(),models={})
+    # Include Chinese inputs to verify multilingual tokenization boundaries.
     contexts=['Question: What is water?\nAnswer:','assistant\n','question  ','问题\n答案：']
     answers=[' solid','a liquid','12.5%','氢和氧','\n42']
     for name in ['Qwen3-0.6B','SmolLM2-360M-Instruct']:

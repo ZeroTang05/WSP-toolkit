@@ -1,4 +1,4 @@
-"""保存不可变的原精度补丁，并按候选版本解析权重。"""
+"""Save immutable original precision patches and resolve weights by candidate version."""
 
 from collections import defaultdict
 from contextlib import contextmanager
@@ -18,7 +18,7 @@ from .tensor_store import WeightStore, sha, slice_region
 
 
 class ParentMismatch(ValueError):
-    """补丁所需的父版本与当前提供的版本不同。"""
+    """The patch requires a different parent version than the currently provided version."""
 
 
 def _digest(record):
@@ -36,7 +36,7 @@ def _check_id(value):
 
 
 class VersionStore:
-    """给一个基座登记候选分支，复用 WeightStore 读取和校验权重。"""
+    """Register candidate branches for a base and reuse WeightStore to read and verify weights."""
 
     def __init__(self, root, store, parameters):
         self.root = Path(root).resolve()
@@ -55,14 +55,14 @@ class VersionStore:
 
     @contextmanager
     def _publish_lock(self):
-        """同一个工作目录的进程共用发布锁。"""
+        """Processes in the same working directory share release locks."""
         self.root.mkdir(parents=True, exist_ok=True)
         with (self.root / ".publish.lock").open("a") as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
             yield
 
     def variant(self, variant_id):
-        """读取已登记的候选，基座使用现有快照 ID。"""
+        """To read registered candidates, the base uses the existing snapshot ID."""
         if variant_id == self.base["variant_id"]:
             return {"variant_id": variant_id, "base_id": self.base["base_id"],
                     "parent_variant_id": None, "patch_id": None}
@@ -73,7 +73,7 @@ class VersionStore:
         return {"variant_id": variant_id, **record}
 
     def _read_bundle(self, folder, patch_id):
-        """验证清单与 Safetensors 文件确实属于同一份补丁。"""
+        """Verify that the manifest and Safetensors file actually belong to the same patch."""
         record = json.loads((folder / "manifest.json").read_text(encoding="utf-8"))
         if record["version"] != 1 or _digest(record) != patch_id:
             raise ValueError("Invalid patch manifest or ID")
@@ -84,7 +84,7 @@ class VersionStore:
         return record
 
     def _sources(self, variant_id):
-        """从子到父查找，保留每个张量最近的一次修改。"""
+        """Search from child to parent, retaining the most recent modification of each tensor."""
         sources = {}
         variant = self.variant(variant_id)
         while variant["patch_id"] is not None:
@@ -105,7 +105,7 @@ class VersionStore:
         return self.store._native(name)
 
     def read_slice(self, variant_id, name, region):
-        """从最近的补丁或基座按原精度读取小切片。"""
+        """Read small slices at original precision from the nearest patch or base."""
         source = self._sources(variant_id).get(name)
         if source is None:
             return self.store.read_native_slice(name, region), self.base["variant_id"]
@@ -115,20 +115,20 @@ class VersionStore:
         return values, source[1]
 
     def tensor_versions(self, variant_id):
-        """返回哪些张量来自候选分支。"""
+        """Returns which tensors come from candidate branches."""
         return {name: source[1] for name, source in self._sources(variant_id).items()}
 
     def read_native(self, variant_id, name):
-        """为本地算法读取一个完整张量。"""
+        """Read a complete tensor for native algorithms."""
         return self._native(name, self._sources(variant_id))
 
     def read_tensors(self, variant_id, names):
-        """多张量分析共用一次版本解析。"""
+        """Share one version resolution across multiple tensor analyses."""
         sources = self._sources(variant_id)
         return {name: self._native(name, sources) for name in names}
 
     def snapshot(self, variant_id):
-        """为一次前向准备一组固定的原精度替换张量。"""
+        """Prepare a fixed set of original precision replacement tensors for a forward pass."""
         sources = self._sources(variant_id)
         return {"variant_id": variant_id, "base_id": self.base["base_id"], "native_patch": True,
                 "values": {name: self._native(name, sources) for name in sources}}
@@ -140,7 +140,7 @@ class VersionStore:
 
     @torch.no_grad()
     def create_patch(self, parent_variant_id, edits, method, read_value, source_artifact_ids=(), source_patch_ids=()):
-        """先完成整组编辑，再写一份可重放的补丁。"""
+        """Complete the entire set of edits first, then write a replayable patch."""
         sources = self._sources(parent_variant_id)
         grouped = defaultdict(list)
         for edit in edits:
@@ -195,7 +195,7 @@ class VersionStore:
 
     @staticmethod
     def _entry(parent, replacement, proposed):
-        """记录写回原精度后真正改变的数值。"""
+        """Record the actual changed value after writing back to the original precision."""
         changed = replacement != parent
         return {"parent_sha256": _tensor_digest(parent), "replacement_sha256": _tensor_digest(replacement),
                 "shape": list(parent.shape), "dtype": str(parent.dtype), "changed": int(changed.sum()),
@@ -230,13 +230,13 @@ class VersionStore:
         return tensors
 
     def patch_tensors(self, parent_variant_id, patch_id):
-        """为本地算法读取已经按共同父版本验证的替换张量。"""
+        """Read replacement tensors that have been verified against a common parent version for the local algorithm."""
         folder = self.patches / _check_id(patch_id)
         patch = self._read_bundle(folder, patch_id)
         return self._verify_parent(folder, patch, parent_variant_id)
 
     def apply_patch(self, parent_variant_id, patch_id):
-        """校验补丁的父张量并发布候选版本。"""
+        """Validate the patch’s parent tensors and publish the candidate version."""
         folder = self.patches / _check_id(patch_id)
         patch = self._read_bundle(folder, patch_id)
         self._verify_parent(folder, patch, parent_variant_id)
@@ -253,14 +253,14 @@ class VersionStore:
         return {**result, "tensors": sorted(patch["tensors"])}
 
     def revert_patch(self, variant_id):
-        """返回父版本 ID，供下一次运行或读权重使用。"""
+        """Returns the parent version ID for use on the next run or read weight."""
         parent = self.variant(variant_id)["parent_variant_id"]
         if parent is None:
             raise ValueError("The base variant has no parent")
         return {"variant_id": self.variant(parent)["variant_id"], "reverted_variant_id": variant_id}
 
     def export_patch(self, patch_id):
-        """把补丁清单和权重复制到宿主的导出目录。"""
+        """Copy the patch manifest and weights to the host export directory."""
         source = self.patches / _check_id(patch_id)
         self._read_bundle(source, patch_id)
         root = self.root / "exports" / "patches"
@@ -273,7 +273,7 @@ class VersionStore:
         return {"patch_id": patch_id, "bundle_path": f"exports/patches/{patch_id}"}
 
     def import_patch(self, bundle_id):
-        """从宿主登记的导入目录验证并接纳补丁。"""
+        """Verify and accept patches from the host registry's import directory."""
         source = self.root / "imports" / _check_id(bundle_id)
         self.patches.mkdir(parents=True, exist_ok=True)
         with TemporaryDirectory(dir=self.patches) as temporary:
@@ -287,7 +287,7 @@ class VersionStore:
         return {"patch_id": bundle_id, "parent_variant_id": patch["parent_variant_id"]}
 
     def export_model(self, variant_id, format="transformers_safetensors"):
-        """导出完整检查点，原样复制配置与分词器，只替换改动过的分片。"""
+        """Export the complete checkpoint, copying the configuration and tokenizer as is, replacing only the modified shards."""
         if format != "transformers_safetensors":
             raise ValueError(f"Unsupported export format: {format}")
         sources = self._sources(variant_id)
@@ -310,14 +310,14 @@ class VersionStore:
             folder = Path(temporary) / "checkpoint"
             shutil.copytree(self.store.model_dir, folder, ignore=skip_rewritten_shards)
             for shard, names in changed_shards.items():
-                # Safetensors 保留分片里的所有原始张量及元数据。
+                # Safetensors retain all original tensors and metadata in the shard.
                 source = self.store._source_path(names[0])
                 with safe_open(str(source), framework="pt", device="cpu") as stream:
                     weights = {name: stream.get_tensor(name) for name in stream.keys()}
                     for name in names:
                         weights[name] = self._native(name, sources)
                     save_file(weights, str(folder / shard), metadata=stream.metadata())
-            # 重验导出的张量索引，并记录导出检查点自己的身份。
+            # Recheck the exported tensor index and record the identity of the export checkpoint itself.
             exported = WeightStore(folder, Path(temporary) / "verify")
             checkpoint = exported.snapshot(with_edits=False)
             with self._publish_lock():

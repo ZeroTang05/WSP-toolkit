@@ -108,7 +108,7 @@ def run_wanda(lab, rows, fraction):
 
 
 def taylor_mlp_scores(layers):
-    """汇总同一前馈通道对应的 gate、up 与 down 权重梯度。"""
+    """Aggregate gate, up, and down weight gradients for each feed-forward channel."""
     scores = []
     for layer in layers:
         mlp = layer.mlp

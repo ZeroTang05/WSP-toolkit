@@ -1,4 +1,4 @@
-"""登记前向结果，通过产物 ID 读取小块数据。"""
+"""Register forward results and read small data slices by artifact ID."""
 
 from itertools import islice
 import json
@@ -15,7 +15,7 @@ _GENERATION_FIELDS = ("prompt_last", "answer_mean")
 
 
 def observation_axes(name):
-    """按现有前向后端输出的含义标注各轴。"""
+    """Label each axis according to the existing forward backend output."""
     if name in ("lengths", "predicted_label_ids"):
         return ["sample"]
     if name in ("class_logits", "class_probabilities"):
@@ -30,13 +30,13 @@ def observation_axes(name):
 
 
 class ArtifactStore:
-    """读取运行目录中已经发布的数组和生成记录。"""
+    """Read published arrays and generation records in the run directory."""
 
     def __init__(self, root):
         self.root = Path(root).resolve()
 
     def references(self, run_id):
-        """列出已经发布的产物。正在运行时清单尚未生成。"""
+        """List published artifacts. The manifest is not yet available while the run is in progress."""
         manifest = self.root / run_id / "artifacts.json"
         if not manifest.is_file():
             return {}
@@ -44,7 +44,7 @@ class ArtifactStore:
         return {name: f"{run_id}/{name}" for name, entry in entries.items() if "member" not in entry}
 
     def publish_forward(self, result, sites):
-        """复用 ForwardService 已保存的文件，只增加产物清单。"""
+        """Reuse files saved by ForwardService and add an artifact manifest."""
         folder = Path(result["artifact_dir"]).resolve()
         if folder.parent != self.root:
             raise ValueError("Forward result belongs to a different workspace")
@@ -69,7 +69,7 @@ class ArtifactStore:
 
     @staticmethod
     def _register_generation_arrays(path, name, entries, sites):
-        """记录生成回放的数组，按样本页返回对应产物 ID。"""
+        """Record generation replay arrays and return artifact IDs by sample page."""
         with path.open(encoding="utf-8") as stream:
             for index, line in enumerate(stream):
                 for key, item in json.loads(line).get("activations", {}).items():
@@ -81,7 +81,7 @@ class ArtifactStore:
                                                "axes": ["channel"], "site_id": site["site_id"]}
 
     def read(self, artifact_id, region=None, offset=None, limit=None):
-        """检查产物归属后按数组切片或记录页读取。"""
+        """Check artifact ownership, then read an array slice or a page of records."""
         run_id, name, entry, path = self._resolve(artifact_id)
         if entry["kind"] == "plot":
             if region is not None or offset is not None or limit is not None:
@@ -125,14 +125,14 @@ class ArtifactStore:
         return run_id, name, entry, path
 
     def array(self, artifact_id):
-        """让工作进程内的算法使用已登记数组，省去 JSON 转换。"""
+        """Let algorithms within worker processes use registered arrays, eliminating the need for JSON conversion."""
         run_id, _, entry, path = self._resolve(artifact_id)
         if entry["kind"] != "array":
             raise ValueError("An array artifact is required")
         return self._load_array(path, entry), {**entry, "run_id": run_id}
 
     def save_array(self, name, array, axes, *, run_id=None, **metadata):
-        """把分析产物和轴说明同时发布，供后续工具按 ID 读取。"""
+        """Publish the analysis artifact and axis descriptions for subsequent tools to read by ID."""
         run_id = run_id or "analysis_" + uuid4().hex
         entry = {"file": f"{name}.npy", "kind": "array", "shape": list(array.shape),
                  "dtype": str(array.dtype), "axes": axes, **metadata}
@@ -145,7 +145,7 @@ class ArtifactStore:
         return f"{run_id}/{name}"
 
     def save_records(self, name, records):
-        """把逐条报告保存为可分页读取的 JSONL 产物。"""
+        """Save itemized reports as paginated JSONL artifacts."""
         run_id = "analysis_" + uuid4().hex
         filename = f"{name}.jsonl"
         with TemporaryDirectory(dir=self.root) as temporary:
@@ -160,7 +160,7 @@ class ArtifactStore:
         return f"{run_id}/{name}"
 
     def save_plot(self, figure, format, source_artifact_id):
-        """保存图文件与原始数值产物之间的关联。"""
+        """Save the association between the plot file and its numerical artifact."""
         run_id = "analysis_" + uuid4().hex
         filename = f"plot.{format}"
         entry = {"file": filename, "kind": "plot", "format": format, "source_artifact_id": source_artifact_id}
@@ -192,7 +192,7 @@ class ArtifactStore:
         if prod(stop - start for start, stop in bounds) > 4096:
             raise ValueError("Select a region of at most 4096 values")
         selected = array[tuple(slice(start, stop) for start, stop in bounds)]
-        # 原始观测用 NaN 标记填充位置，JSON 中用 null 表示。
+        # Raw observations mark padding positions with NaN; JSON represents them as null.
         values = np.where(np.isfinite(selected), selected.astype(object), None).tolist()
         fields = ("shape", "axes", "dtype", "site_id", "method", "evidence_type", "source_run_id", "variant_id",
                   "source_artifact_ids", "through_layer", "sample_index", "token_positions", "query_positions", "raw_flow",

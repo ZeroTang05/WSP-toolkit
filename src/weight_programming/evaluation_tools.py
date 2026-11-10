@@ -1,4 +1,4 @@
-"""通过共用前向执行开发集配对评测和偏好分差。"""
+"""Development set pairwise evaluation and preference score difference are performed via shared forwards."""
 
 from collections import defaultdict
 import json
@@ -12,7 +12,7 @@ from .grading import extract
 
 
 class BoxedExactGrader:
-    """在 MCP 工作线程使用可重现的答案文本匹配。"""
+    """Use reproducible answer text matching in MCP worker threads."""
 
     identity = {"name": "boxed_exact", "version": 1}
 
@@ -24,7 +24,7 @@ class BoxedExactGrader:
 
 
 def _cluster_interval(original, edited, seed, draws):
-    """按题目重抽样，保留同一题的重复生成相关性。"""
+    """Resample by question to retain the correlation of repeated generation of the same question."""
     reference = {(row["id"], row["sample"]): row["correct"] for row in original}
     by_case = defaultdict(list)
     for row in edited:
@@ -37,7 +37,7 @@ def _cluster_interval(original, edited, seed, draws):
 
 
 def aligned_completion(backend, prefix, text):
-    """返回提示词边界之后的回答词元，共供评分和梯度归因使用。"""
+    """Returns the answer tokens after the prompt word boundary for use in scoring and gradient attribution."""
     full = backend.encode(text)
     if full[:len(prefix)] != prefix or len(full) <= len(prefix):
         raise ValueError("Use a prompt boundary that aligns with complete tokens")
@@ -45,7 +45,7 @@ def aligned_completion(backend, prefix, text):
 
 
 class EvaluationTools:
-    """从已授权的数据和指定模型版本产生可重算的报告。"""
+    """Generate reproducible reports from authorized data and specified model versions."""
 
     def __init__(self, forward, versions, artifacts, run_forward):
         self.forward = forward
@@ -56,7 +56,7 @@ class EvaluationTools:
     def evaluate_variants(self, baseline_variant_id, candidate_variant_ids, dataset_id, case_ids,
                           max_new_tokens, samples=1, metric="boxed_exact", bootstrap_draws=1000,
                           *, comparison=None):
-        """在同样题目和生成种子上评估基线及候选。"""
+        """Evaluate baselines and candidates on the same problem and generation seeds."""
         practice = self.forward.practice
         if practice.name != dataset_id or practice.role != "development" or self.forward.grader is None:
             raise ValueError("An explicitly registered development dataset is required")
@@ -109,7 +109,7 @@ class EvaluationTools:
                 "same_rendered_prompt_required": candidate_service is self}
 
     def score_preferences(self, variant_id, reference_variant_id, pairs, aggregation="sum"):
-        """比较回答部分的对数概率，显式检查分词边界。"""
+        """Compare answer log probabilities and explicitly check tokenization boundaries."""
         backend = self.forward.backend
         texts, starts = [], []
         for pair in pairs:

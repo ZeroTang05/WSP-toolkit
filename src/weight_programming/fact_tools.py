@@ -1,4 +1,4 @@
-"""将 EasyEdit 的知识编辑结果发布为工具包的候选补丁。"""
+"""Publish EasyEdit's knowledge editing results as candidate patches for the toolkit."""
 
 import json
 import math
@@ -15,7 +15,7 @@ from .reconstruction import input_hessian
 
 
 class FactTools:
-    """在单独的 EasyEdit 环境计算改动，主模型继续用于校准和评测。"""
+    """Calculate edits in a separate EasyEdit environment while the main model remains available for calibration and evaluation."""
 
     def __init__(self, tools, python, source):
         self.tools = tools
@@ -27,7 +27,7 @@ class FactTools:
             raise ValueError("The fact editor requires a Llama or Qwen3 decoder")
 
     def _run_editor(self, directory):
-        """通过文件交换数值，分离两个 Transformers 运行环境。"""
+        """Separate the two Transformers runtime environments by exchanging values ​​via files."""
         script = Path(__file__).with_name("fact_worker.py").resolve()
         env = dict(os.environ, PYTHONPATH=str(self.source), PYTHONDONTWRITEBYTECODE="1", HF_HUB_OFFLINE="1",
                    HF_DATASETS_OFFLINE="1", TOKENIZERS_PARALLELISM="false")
@@ -45,7 +45,7 @@ class FactTools:
 
     def edit_facts(self, parent_variant_id, method, facts, layers, calibration_texts,
                    steps=20, learning_rate=0.3, relative_damping=0.01, mom2_weight=15000.0):
-        """用登记模型的实际激活准备二阶统计，再执行 ROME 或 MEMIT。"""
+        """Prepare second-order statistics with the actual activations of the registered model before executing ROME or MEMIT."""
         tools = self.tools
         if not tools.allow_edits or not tools.allow_gradients:
             raise PermissionError("Fact editing requires edit and gradient permissions")

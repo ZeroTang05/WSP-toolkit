@@ -1,4 +1,4 @@
-"""用 MCP 的标准输入输出传输接入共用工具登记表。"""
+"""Access the shared utility registry using MCP's standard input and output transport."""
 
 import argparse
 from contextlib import redirect_stdout
@@ -19,7 +19,7 @@ from .patches import ParentMismatch
 
 
 def create_server(registry):
-    """只负责 MCP 消息转换，具体执行仍由登记表负责。"""
+    """It is only responsible for MCP message conversion, and the registration table is still responsible for the specific execution."""
     async def list_tools(_context, _params):
         return ListToolsResult(tools=[Tool(name=spec.name, description=spec.description,
                                           input_schema=spec.input_schema, output_schema=spec.output_schema)
@@ -48,19 +48,19 @@ def create_server(registry):
 
 
 def failure(code, message):
-    """让客户端收到可处理的错误原因。"""
+    """Let the client receive a handleable error reason."""
     return CallToolResult(is_error=True, structured_content={"code": code, "message": message},
                           content=[TextContent(type="text", text=message)])
 
 
 async def serve(server):
-    """通过官方 SDK 监听本地客户端。"""
+    """Listen to local clients through the official SDK."""
     async with stdio_server() as (reader, writer):
         await server.run(reader, writer, server.create_initialization_options())
 
 
 def load_cases(path, role, name):
-    """读取由宿主登记的训练集或开发集。"""
+    """Read the training set or development set registered by the host."""
     if path is None:
         return None
     with path.open(encoding="utf-8") as stream:
@@ -68,7 +68,7 @@ def load_cases(path, role, name):
 
 
 def main():
-    """从命令行加载宿主指定的真实模型。"""
+    """Loads a host-specified real model from the command line."""
     parser = argparse.ArgumentParser(description="WSP-toolkit local MCP inspection server")
     parser.add_argument("--model", required=True, help="Local checkpoint directory or Hub repository")
     parser.add_argument("--revision", help="Full Hub commit SHA for a Hub repository")

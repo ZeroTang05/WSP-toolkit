@@ -1,4 +1,4 @@
-"""由宿主登记本地检查点或固定提交的 Hub 模型。"""
+"""Hub models registered with local checkpoints or pinned commits by the host."""
 
 import json
 from hashlib import sha256
@@ -9,7 +9,7 @@ from .tensor_store import WeightStore, sha
 
 
 def register_model(source, workspace, *, revision=None):
-    """核对来源并登记模型，返回权重存储及模型描述。"""
+    """Check the source and register the model, and return weight storage and model description."""
     workspace = Path(workspace).resolve()
     if revision is None:
         model_dir = Path(source).resolve(strict=True)

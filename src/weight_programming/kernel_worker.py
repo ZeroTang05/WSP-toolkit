@@ -10,7 +10,7 @@ import traceback
 
 
 def versioned_bindings(store, tokenizer, cell):
-    """绑定只读模型版本和本次计算声明的数组接口。"""
+    """Bind the read-only model version to the array interface declared for this calculation."""
     from pathlib import Path
     import numpy as np
     from safetensors import safe_open
@@ -24,7 +24,7 @@ def versioned_bindings(store, tokenizer, cell):
     overlay = observations / 'variant.safetensors'
 
     def load(name, region=None):
-        """从绑定版本读取原精度权重，也可直接读取小切片。"""
+        """Read original precision weights from the bound version, or read small slices directly."""
         if overlay.is_file():
             with safe_open(overlay, framework='pt', device='cpu') as stream:
                 if name in stream.keys():
@@ -35,12 +35,12 @@ def versioned_bindings(store, tokenizer, cell):
         return store._native(name) if region is None else store.read_native_slice(name, region)
 
     def read_array(name):
-        """读取宿主按名字提供的本次输入数组。"""
+        """Read the current input array provided by the host by name."""
         with safe_open(observations / cell['run_id'] / 'inputs.safetensors', framework='np') as stream:
             return stream.get_tensor(name)
 
     def save_array(name, value):
-        """写出声明过的数组，供宿主校验并登记。"""
+        """Write out the declared array for verification and registration by the host."""
         if name not in cell['outputs']:
             raise ValueError('Declare the output array name in the tool request')
         if isinstance(value, torch.Tensor):

@@ -1,40 +1,40 @@
-# 四模型逐层观测与删层干预：工具链为什么需要因果确认
+# Four-Model Layer Observation and Deletion: Why Causal Confirmation Matters
 
-本文保留成文时的实验设置、结果与状态。当前项目进度见[项目状态](../../PROJECT_STATUS.md)。
+This report preserves the experimental setup, results, and status at the time of writing. See [Project status](../../PROJECT_STATUS.md) for current progress.
 
-2026-11-07。四模型全部观测及单层删除已完成，来自此前冻结的programming-expansion-v1；不是新增小型smoke，也不是完整生成能力结论。
+2026-11-07. Observation and individual layer deletion are complete for all four models, using the previously frozen `programming-expansion-v1` study. These are substantive measurements rather than an additional execution check, and they do not establish full generation capability.
 
-## 方法依据与测量
+## Method and Measurements
 
-[ShortGPT](https://arxiv.org/abs/2403.03853)的Block Influence以层输入／输出余弦变化描述层影响。当前适配以128条训练派生校准文本计算每题平均token变化，再对题目取均值；不是按全数据token数加权。随后分别删除每一层，在独立的64条训练派生开发文本测参考解答bits/byte变化，在32条ARC validation测长度归一化选择分数的交叉熵变化。
+[ShortGPT](https://arxiv.org/abs/2403.03853) defines Block Influence through cosine changes between layer inputs and outputs. This adaptation uses 128 training-derived calibration texts, averages token changes within each example, and then averages across examples. It does not weight examples by their token counts. Each layer is then removed individually. Measurements use 64 independent training-derived development texts for changes in reference-answer bits/byte, and 32 ARC validation examples for cross-entropy changes in length-normalized option scores.
 
-删除是一项真实执行图干预；本实验从基座开始，每次只删一层，之后恢复。正的损伤表示该代理变差，负值表示代理改善。参考解答似然和ARC代理均不能替代公开生成准确率或官方acc_norm。
+Deletion is an actual intervention on the execution graph. Every condition starts from the base model, removes one layer, and restores it afterward. Positive damage means a worse proxy metric; negative damage means an improvement. Reference-answer likelihood and the ARC proxy do not replace public generation accuracy or official `acc_norm`.
 
-## 已取得的结果
+## Results
 
-| 模型 | 层数 | BI与领域损伤Spearman | BI与ARC代理损伤Spearman | 删除后领域代理改善的层数 |
+| Model | Layers | Spearman: BI vs. domain damage | Spearman: BI vs. ARC proxy damage | Layers whose deletion improves the domain proxy |
 |---|---:|---:|---:|---:|
 | Qwen3-0.6B | 28 | −0.102 | 0.244 | 14 |
 | Qwen3-1.7B | 28 | −0.005 | 0.121 | 18 |
 | SmolLM2-360M-Instruct | 32 | 0.428 | −0.155 | 0 |
 | SmolLM2-1.7B-Instruct | 24 | 0.433 | 0.157 | 0 |
 
-共112个独立删层条件，但层共享模型和输入，不能视作112个独立统计样本。Spearman只描述每个模型内部的排序关系；不对相关层给出独立样本p值，不据此宣称模型家族之间存在已确认差异。
+The 112 separate layer-deletion conditions share models and inputs, so they are not 112 independent statistical samples. Spearman correlations describe rankings within each model. No independent-sample p-values are assigned to dependent layers, and these correlations do not establish confirmed differences between model families.
 
-![BI与实际删层代理损伤](../../docs/figures/layer-observation-analysis.png)
+![Block influence and measured proxy damage after layer deletion](../../docs/figures/layer-observation-analysis.png)
 
-纵轴采用symlog，正值为代理退化、负值为改善；标注各模型BI最低的三层，颜色表示层深度。[可导出PDF](../../docs/figures/layer-observation-analysis.pdf)。
+The vertical axis uses `symlog`: positive values indicate proxy degradation, negative values improvement. The three lowest-BI layers of each model are labeled; color indicates layer depth. [Exportable PDF](../../docs/figures/layer-observation-analysis.pdf).
 
-## 对工具设计的具体影响
+## Implications for Tool Design
 
-**相似不等于可删除。** Qwen3-0.6B的第26层BI最低，但删除后领域损伤+0.130 bits/byte，ARC代理损伤+0.081。Qwen3-1.7B同一相对位置的第26层，领域变化−0.207、ARC代理变化−0.226。相近位置、相近低BI分数并未给出相同方向的局部效果。
+**Similarity does not establish removability.** Qwen3-0.6B has its lowest BI at layer 26, yet removing that layer causes +0.130 bits/byte domain damage and +0.081 ARC proxy damage. At the same relative layer 26 of Qwen3-1.7B, the changes are −0.207 and −0.226 respectively. Similar positions and similarly low BI do not imply the same direction of local effect.
 
-**任务定义会改变排序。** SmolLM2-360M的领域相关为+0.428，ARC代理为−0.155。仅用某一领域的观测分数，不能保证保护任务也保真。因此Observation需要绑定数据分布与指标，EditPlan还需要保护条件。
+**Task definitions change rankings.** SmolLM2-360M has a domain correlation of +0.428 and an ARC proxy correlation of −0.155. Observation scores from one domain do not guarantee preservation of a guard task. `Observation` must bind its data distribution and metric, and `EditPlan` must include preservation constraints.
 
-**代理改善也要确认。** Qwen的多层删除能降低参考解答损失，可能涉及输出风格、概率分配或其他变化。当前没有证据将其解释为“删层让推理更强”或“修复循环”。下一步依照已冻结的BI／随机／尾删候选，在完整GSM8K、ARC-C、HellaSwag确认，而不是用上述开发代理改写公开测试结果。
+**Proxy improvements require confirmation.** Several Qwen layer deletions reduce reference-answer loss, potentially through output style, probability allocation, or other changes. The evidence does not establish stronger reasoning or repaired computational loops. The next step is full GSM8K, ARC-C, and HellaSwag evaluation of the frozen BI-selected, random, and tail-deletion candidates. Development proxies do not redefine public test results.
 
-这些结果支持“快速统计生成候选→真实干预核对→多层组合验证→完整任务确认”的工具内在逻辑。单层效应也不能相加预测多层删除：层间存在相互作用，组合需要重新执行。它们不是对ShortGPT普遍无效的证明，也不应据此放弃统计工具。
+These results support a workflow of statistical candidate generation, actual intervention checks, multilayer combination validation, and full-task confirmation. Single-layer effects cannot simply be added to predict multilayer deletion, because layers interact and combinations must be executed again. The study does not establish that ShortGPT is generally ineffective or that statistical observation tools should be discarded.
 
-## 证据与复跑
+## Evidence and Reproduction
 
-四模型的protocol、逐层原始记录、选择器、源码和完成记录已下载至`artifacts/public/programming-expansion-v1/<model>/probe/`。`src/analyze_layer_observations.py`重新计算相关并与原完成记录核对，输出绑定输入哈希；图使用标准matplotlib生成。完整公开矩阵仍在执行，当前不报告尚未完成的任务分数。
+Protocols, per-layer records, selectors, source, and completion records for the four models are stored locally at `artifacts/public/programming-expansion-v1/<model>/probe/`. `src/analyze_layer_observations.py` recomputes correlations, checks them against completion records, and binds outputs to input hashes. Figures use standard Matplotlib. At the time of this report, the full public evaluation matrix was still running; unfinished task scores are not reported here.

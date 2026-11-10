@@ -1,69 +1,69 @@
-# TIES工具扩充：真实有效更新、冲突与范数控制
+# TIES Tool Extension: Effective Updates, Conflicts, and Norm Control
 
-本文保留成文时的实验设置、结果与状态。当前项目进度见[项目状态](../../PROJECT_STATUS.md)。
+This report preserves the experimental setup, results, and status at the time of writing. See [Project status](../../PROJECT_STATUS.md) for current progress.
 
-2026-11-07。本轮增加可调用工具并完成四个真实模型的参数合并；五条件行为代理实验现已全部完成。没有据此宣称生成准确率提升。
+2026-11-07. Callable tools and parameter merges for four real models are complete, as is the five-condition behavioral proxy experiment. This report does not claim improved generation accuracy.
 
-## 文献位置与工具用途
+## Method Sources and Tool Use
 
-[TIES-Merging](https://arxiv.org/abs/2306.01708)研究模型合并中的小更新冗余与符号干扰。它填补本工具链“已获得多个能力更新以后，如何组合”的环节；不替代观测、剪枝、补偿或完整任务验证。
+[TIES-Merging](https://arxiv.org/abs/2306.01708) studies redundant small updates and sign interference in model merging. It addresses how to combine existing capability updates, complementing observation, pruning, compensation, and full-task validation.
 
-公共接口`weight_programming.ties_merge`接收同基座、同坐标范围内的有效delta，输出稠密CPU FP32更新及阈值／冲突／保留量证据。对LoRA应先得到带训练系数的BA，不能直接平均A、B。接口、适配与边界见[方法卡](../../docs/ties-merging.md)。
+The public interface `weight_programming.ties_merge` accepts effective deltas in a shared base and coordinate space. It returns dense CPU FP32 updates and evidence about thresholds, conflicts, and retention. For LoRA, first compute BA with its training scale; averaging A and B separately is not equivalent. The [method card](../../docs/ties-merging.md) defines the interface, adaptations, and boundaries.
 
-来源参考固定为`prateeky2806/ties-merging@44e7891fc84f3de7e4caa52664cd864ca3715e91`的`src/utils/merge_utils.py`，独立实现，不在公共包中复制上游代码。内部归档与哈希仅用于比对。
+The reference is pinned to `src/utils/merge_utils.py` in `prateeky2806/ties-merging@44e7891fc84f3de7e4caa52664cd864ca3715e91`. The public package implements the method independently without copying upstream code. The internal archive and its hashes serve differential validation only.
 
-已对随机、有大量同值、全零及符号抵消输入，在三种密度下完成12组差分比较，结果逐元素完全相同。三个额外检查验证质量符号选举、全局坐标范围、输入不变及不兼容来源拒绝。
+Twelve differential comparisons cover three densities and four input types: random values, many tied values, all zeros, and sign cancellation. Results agree exactly, element by element. Three additional checks cover mass-based sign election, global coordinate scope, unchanged inputs, and incompatible-source rejection.
 
-必须公开两个参考细节：inclusive kth阈值并非严格保留指定个数，可能多保留同值及一个边界坐标；质量符号为零时，参考实现使用全局符号回填，全局仍为零时进入负值选择分支。本工具默认保持这些行为，另提供显式abstain变体；密度0／1端点单列为扩展，不冒称与上游出错端点一致。
+Two reference details matter. An inclusive kth threshold can retain tied values and a boundary coordinate, so it does not strictly retain the requested count. When the mass-based sign is zero, the reference fills it from the global sign; if that is also zero, selection follows the negative branch. The tool preserves these defaults and offers an explicit abstention variant. Density endpoints 0/1 are separately declared extensions, not equivalence claims for upstream endpoints that raise errors.
 
-## 四个真实模型的结果
+## Four-Model Results
 
-每个模型使用自己的GSM训练seed11／22／33、q/v rank8更新；合并密度固定0.2，按所有目标模块的联合坐标裁剪。没有测试集选参数。来源不是不同专业角色，而是同任务不同训练种子，因此不能直接推断角色合并效果。
+Each model uses its own GSM training updates from seeds 11/22/33, with q/v rank8 factors. Merge density is fixed at 0.2, with trimming over the joint coordinates of all target modules. No parameter is selected on test results. These sources are different training seeds for one task, so they do not establish the effects of merging distinct professional roles.
 
-| 模型 | 裁剪后活跃坐标中符号冲突 | 最终delta非零比例 | TIES／普通平均范数 | 与普通平均方向余弦 | 稠密delta MiB |
+| Model | Sign conflicts among active coordinates after trimming | Final delta nonzero fraction | TIES/ordinary-mean norm | Cosine with ordinary-mean direction | Dense delta MiB |
 |---|---:|---:|---:|---:|---:|
 | Qwen3-0.6B | 11.07% | 44.91% | 1.974 | 0.800 | 336.0 |
 | Qwen3-1.7B | 6.84% | 43.14% | 1.702 | 0.838 | 672.0 |
 | SmolLM2-360M | 2.61% | 38.70% | 1.359 | 0.884 | 150.0 |
 | SmolLM2-1.7B | 3.80% | 42.10% | 1.564 | 0.859 | 768.0 |
 
-Qwen0.6共88,080,384维、56模块；其余模型分别176,160,768、39,321,600、201,326,592维。实际编译耗时13.95／35.55／7.49／38.73秒，包含参数分析与导出，不是推理延迟。完整结果与来源位于`artifacts/toolkit/ties-merge-v1/`，稠密权重产物保存在远端benchmark目录。
+Qwen0.6 has 88,080,384 coordinates across 56 modules. The other models have 176,160,768, 39,321,600, and 201,326,592 coordinates respectively. Actual compilation takes 13.95/35.55/7.49/38.73 seconds, including parameter analysis and export; these are not inference latencies. Full results and sources are in `artifacts/toolkit/ties-merge-v1/`, while dense weight artifacts remain in the remote benchmark directory.
 
-可以直接得到四点分析：
+Four conclusions follow directly:
 
-1. **合并确实改变了方向与幅度。** 0.6B的余弦0.800，但范数也接近翻倍；若行为改善，不能只归因于消除了符号冲突。
-2. **冲突依赖模型与更新来源。** 当前Smol360最低，Qwen0.6最高，与已有训练种子方向一致性观察相容，但四个检查点不足以建立规模规律或因果关系。
-3. **输入密度不等于合并输出密度。** 每个源保留约20%，三个支持集合的并集更大，最终非零约39%—45%。不能将density=0.2写成“最终模型只剩20%参数”。
-4. **该工具不保证压缩。** 原LoRA更新是低秩表示；TIES的坐标裁剪和非线性选举可提高秩，当前稠密导出反而更大。若再低秩压缩，必须把近似误差和任务损伤作为后续独立操作测量。
+1. **Merging changes both direction and magnitude.** For 0.6B, cosine is 0.800 and the norm nearly doubles. A behavioral gain would therefore require controls before attributing it solely to sign-conflict removal.
+2. **Conflict depends on the model and update sources.** Smol360 has the lowest conflict and Qwen0.6 the highest, consistent with earlier observations of cross-seed directional alignment. Four checkpoints do not establish scaling laws or causality.
+3. **Input density differs from merged output density.** Each source retains approximately 20%, but the union of three supports is larger, yielding approximately 39%–45% nonzero output. Density=0.2 does not mean only 20% of final model parameters remain.
+4. **Merging does not guarantee compression.** Source LoRA updates have low-rank representations. Coordinate trimming and nonlinear election can increase rank, and the current dense export is larger. Subsequent low-rank compression must measure approximation error and task damage separately.
 
-## 已启动的五条件行为分析
+## Five-Condition Behavioral Analysis
 
-条件固定为：原模型、普通平均、TIES、缩到普通平均范数的TIES、放大到TIES范数的普通平均。这样可分别检查新方向和幅度是否有用。
+The fixed conditions are the base model, ordinary mean, TIES, TIES scaled down to the ordinary-mean norm, and the ordinary mean scaled up to the TIES norm. They separate the effects of direction and magnitude.
 
-`src/evaluate_ties_proxy.py`在CPU FP32参数和执行精度下，使用既有GSM训练派生development64和ARC官方validation32。报告参考答案bits/byte、选项归一化CE、逐题记录；不是完整GSM生成准确率，也不与旧BF16分数直接混比。全条件使用同模板、输入与计算路径，顺序由固定哈希决定，不作延迟结论。
+`src/evaluate_ties_proxy.py` uses the existing 64 GSM training-derived development examples and 32 official ARC validation examples, with FP32 parameters and CPU execution. It reports reference-answer bits/byte, normalized option cross-entropy, and per-question records. These are not full GSM generation accuracy and are not directly comparable to earlier BF16 scores. Every condition shares templates, inputs, and computation; a fixed hash determines order. No latency conclusion is drawn.
 
-第一次`job-mw5m3v14-ad1b`在加载模型前因把`__pycache__`目录当文件哈希而退出1，无模型效果结果。已改为只对`.py`文件哈希，使用新目录提交`job-mw5m56e4-1888`，现已退出0、五条件完成。保留失败目录；本地原始逐题数据与配对分析位于`artifacts/toolkit/ties-merge-v1/Qwen3-0.6B-proxy-v2/`。
+The first job, `job-mw5m3v14-ad1b`, exited 1 before model loading because it tried to hash the `__pycache__` directory as a file, yielding no model-effect result. The corrected runner hashes only `.py` files and submitted `job-mw5m56e4-1888` in a new directory. It exited 0 with all five conditions complete. The failed directory is retained; local per-question data and paired analysis are in `artifacts/toolkit/ties-merge-v1/Qwen3-0.6B-proxy-v2/`.
 
-| 条件 | 更新范数／普通平均 | GSM参考答案bits/byte↓ | ARC选项归一化CE↓ | ARC正确／32 |
+| Condition | Update norm/ordinary-mean norm | GSM reference-answer bits/byte ↓ | ARC normalized option CE ↓ | ARC correct/32 |
 |---|---:|---:|---:|---:|
-| 原模型 | 0 | 0.83098 | 1.55156 | 6 |
-| 普通平均 | 1 | 0.36551 | 1.55051 | 11 |
+| Base model | 0 | 0.83098 | 1.55156 | 6 |
+| Ordinary mean | 1 | 0.36551 | 1.55051 | 11 |
 | TIES | 1.974 | 0.40352 | 1.69427 | 7 |
-| TIES缩到普通平均范数 | 1 | 0.33276 | 1.45300 | 8 |
-| 普通平均放大到TIES范数 | 1.974 | 0.45358 | 1.72924 | 8 |
+| TIES scaled to ordinary-mean norm | 1 | 0.33276 | 1.45300 | 8 |
+| Ordinary mean scaled to TIES norm | 1.974 | 0.45358 | 1.72924 | 8 |
 
-`analyze_ties_proxy.py`重新核对全部逐题聚合及ID对应后，使用10,000次配对题目bootstrap。范数匹配的TIES较普通平均的domain差为−0.03275 bits/byte，名义95%区间[−0.03879, −0.02745]；63题改善、1题退化。在相同较大范数下，TIES比放大的平均更新低0.05005 bits/byte，也有63题改善。原始TIES比普通平均差0.03801，64题全部退化。这支持“方向与幅度需要分开研究”的实验动机，不支持未经控制地把原始TIES写成胜出方法。
+`analyze_ties_proxy.py` rechecks every per-question aggregation and ID mapping, then runs 10,000 paired question bootstraps. Norm-matched TIES improves over the ordinary mean by −0.03275 bits/byte, with a nominal 95% interval of [−0.03879, −0.02745]: 63 questions improve and 1 worsens. At the same larger norm, TIES is 0.05005 bits/byte better than the scaled-up mean, with 63 improvements. Unscaled TIES is 0.03801 worse than the ordinary mean, degrading all 64 questions. These results motivate separating direction from magnitude; they do not support declaring unscaled TIES superior without controls.
 
-保护集CE与准确率的排序并不一致：范数匹配的TIES降低了归一化CE，却从普通平均的11/32降到8/32。CE优势不能称作保护任务能力保持；该32题分析也是开发诊断，不能替代完整ARC确认。
+Guard-set CE and accuracy rank conditions differently. Norm-matched TIES lowers normalized CE but falls from the ordinary mean's 11/32 correct to 8/32. A CE advantage does not establish guard-task capability preservation. This 32-question development diagnosis cannot replace full ARC confirmation.
 
-区间只反映当前开发题目的不确定性，未做多重比较校正，未包含训练种子组合的不确定性；同一组合中的三个训练种子也不是三次独立合并实验。
+The interval measures uncertainty over the current development questions, without multiple-comparison correction or uncertainty over training-seed combinations. Three source seeds within one merge are not three independent merge experiments.
 
-已提交`job-mw5mjcu2-016b`，在新的完整GSM1319五条件面板上检验生成效果。采用同一BF16稠密权重执行路径、batch32／512生成、相同模板与固定条件；不复用数值不同的函数式LoRA或CPU FP32成绩。GPU0按条件排队，原始测试分数不用于继续改程序。
+At the time of writing, `job-mw5mjcu2-016b` had been submitted for a fresh full GSM1319 five-condition generation panel. It uses the same BF16 dense-weight execution path, batch32/512 generation, templates, and fixed conditions. Numerically different functional-LoRA and CPU FP32 results are not reused. Conditions queue separately on GPU0, and original test scores do not guide further program changes.
 
-完整生成效果仍需在固定程序和独立确认任务上测量。若代理与生成排序相反，作为方法边界报告，不在测试上继续调整合并规则。
+Full generation effects require frozen programs and independent confirmation tasks. If proxy and generation rankings reverse, the reversal is reported as a method boundary; merge rules are not retuned on the test set.
 
-## 开源与其他实验
+## Open Source and Other Experiments
 
-源码已发布在[提交0ce8d0b](https://github.com/ZeroTang05/idea4-weightlab/commit/0ce8d0b77f762cf7c8baec12ba1382b8412c4e3f)，包含工具、方法卡、契约、真实研究脚本和检查。匿名下载的源码哈希与本地一致；当前为main开发源码，旧预发布wheel不变。
+The source was released in [commit0ce8d0b](https://github.com/ZeroTang05/idea4-weightlab/commit/0ce8d0b77f762cf7c8baec12ba1382b8412c4e3f), including tools, method cards, contracts, real study runners, and checks. An anonymously downloaded source copy matches the local hashes. At the time of this report, it was the development source, while the earlier prerelease wheel remained unchanged.
 
-原Qwen3.5独立程序设计者`job-mw5ltbbd-76df`仍在等待GPU0；4B办公任务`job-mw5jt7i0-e7ef`仍运行。本轮新增TIES不进入已经冻结的独立WSP轨道，也不作为其无训练发现的候选答案。
+The original Qwen3.5 independent programmer `job-mw5ltbbd-76df` was still waiting for GPU0, and the 4B office task `job-mw5jt7i0-e7ef` was still running. The new TIES tool does not enter the frozen independent WSP track or supply a candidate answer for its training-free discovery.

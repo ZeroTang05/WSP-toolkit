@@ -1,4 +1,4 @@
-"""在真实模型上比较权重差分并压缩一份已有更新。"""
+"""Compare weight differences on the real model and compress a copy of existing updates."""
 
 import argparse
 import asyncio
@@ -47,14 +47,14 @@ async def main(model):
                 request = {"parent_variant_id": base, "patch_id": patch["patch_id"], "rank": 1}
                 compressed = await call("compress_update", {**request, "materialize": True})
                 assert compressed["patch_id"] and compressed["stored_parameters"] == sum(first["shape"])
-                # 同一个更新文件可直接按 ID 复用，分析写回原精度的误差。
+                # Reuse the update file by ID and analyze the error from writing back at the original precision.
                 adapter = await call("analyze_weight_delta", {"base_variant_id": base,
                                                               "adapter_id": compressed["adapter_id"]})
                 assert adapter["top_tensors"][0]["theoretical_update_norm"] > 0
                 weighted = await call("compress_update", {**request, "method": "activation_weighted_svd",
                                                             "input_artifacts": inputs})
                 assert weighted["stored_parameters"] == compressed["stored_parameters"]
-                # 两组真实前馈输出给出同坐标的均值差，投影工具直接复用它们。
+                # The two sets of real feedforward outputs provide a mean difference in aligned coordinates for the projection tool.
                 directions = []
                 for texts in (["The capital of France is", "The river flows into the sea."],
                               ["The capital of Italy is", "The river runs into the lake."]):

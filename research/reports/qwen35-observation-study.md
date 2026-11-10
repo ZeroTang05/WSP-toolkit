@@ -1,25 +1,25 @@
-# 原作Qwen3.5基座：混合架构观测已接通
+# Original Qwen3.5 base: hybrid-architecture observations
 
-本文保留成文时的实验设置、结果与状态。当前项目进度见[项目状态](../../PROJECT_STATUS.md)。
+This report preserves the experimental settings, results, and status at the time of writing. For the current project progress, see [Project Status](../../PROJECT_STATUS.md).
 
-2026-11-07。真实原始检查点执行完成，不是权重修改效果或MIT性能复现结论。
+2026-11-07. Execution of the original checkpoint is complete. These results do not establish the effect of weight edits or reproduce the MIT performance result.
 
-基座固定为Qwen/Qwen3.5-0.8B revision `2fc06364715b967f1860aea9cf38778875588b17`。新运行时独立使用Transformers5.3.0、Torch2.5.1+cu121，原实验环境未更改。采用官方HF完整ConditionalGeneration类保留原始参数坐标，不通过改名重映射掩盖差分对应关系。
+The base is fixed to Qwen/Qwen3.5-0.8B revision `2fc06364715b967f1860aea9cf38778875588b17`. The new runtime uses a separate Transformers 5.3.0 and Torch 2.5.1+cu121 environment; the original experiment environment was not changed. The official HF complete ConditionalGeneration class preserves the original parameter coordinates without renaming or remapping that could obscure correspondence between differences.
 
-473个已执行／加载张量与源检查点逐项核对一致。源检查点另有15个MTP分支张量，被HF后端忽略、不执行；其清单写入后端身份，不能把针对它们的编辑当作生效操作。视觉权重加载并核对，但当前接口只接受文本。
+All 473 executed or loaded tensors were checked against the source checkpoint. The source also contains 15 MTP-branch tensors that the HF backend ignores and does not execute. Their names are recorded in the backend identity; edits to them cannot be treated as effective operations. Vision weights are loaded and checked, but the current interface accepts text only.
 
-## 真实执行结果
+## Real execution results
 
-32条训练派生校准文本，合计6,528 tokens，单条92—404 tokens；CPU BF16，不调用GPU。第一项请求返回token log-prob、top-3、残差0／12／24、MLP输入0／12／23。残差数组32×404×1024，MLP数组32×404×3584，预估返回约715.5MB，实际请求88.54秒。
+The run used 32 training-derived calibration texts totaling 6,528 tokens, with 92–404 tokens per text. It ran on CPU in BF16 without a GPU. The first request returns token log-prob, top-3, residual 0/12/24, and MLP input 0/12/23. The residual array is 32×404×1024, and the MLP array is 32×404×3584. The estimated return payload was approximately 715.5 MB, and the request took 88.54 seconds.
 
-第二项请求在其中两条文本上读取第3、23层注意力，454 tokens；每层数组2×8×246×246，实际请求5.80秒。18个线性注意力层不会伪造普通attention map；合法全注意力层为3、7、11、15、19、23。
+The second request read attention at layers 3 and 23 for two texts totaling 454 tokens. Each layer array had shape 2×8×246×246, and the request took 5.80 seconds. The 18 linear-attention layers do not expose ordinary attention maps; the legal full attention layers are 3, 7, 11, 15, 19, and 23.
 
-两次预算请求均成功、没有失败，共34次实际模型前向；脚本记录总约100.34秒。源代码快照、基座与数据哈希、后端身份、数组语义和预算均保存。小型结果见`artifacts/toolkit/wsp-hybrid-observation-v1/Qwen3.5-0.8B/`；大数组留在服务器。
+Both budgeted requests succeeded, using 34 actual model forward passes in total; the script recorded approximately 100.34 seconds overall. Source code snapshots, base and data hashes, backend identities, array semantics and budgets are saved. See `artifacts/toolkit/wsp-hybrid-observation-v1/Qwen3.5-0.8B/` for small results; large arrays stay on the server.
 
-## 当前能支持什么研究
+## What research can currently be supported?
 
-可以从原模型读取同一坐标系的残差、MLP输入及合法注意力，构造假设后提交原精度权重提案，并使用预算服务比较。这样工具库不再仅能对Qwen3-0.6B操作，已覆盖原作混合架构的真实内部观测。
+Researchers can read residuals, MLP inputs, and supported attention from the base model in the same coordinate system, form hypotheses, submit weight proposals at original precision, and compare them through the budgeted service. The toolkit now supports real internal observations of the original hybrid architecture as well as Qwen3-0.6B.
 
-这些观测没有揭示循环的原因，也没有证明某个层或方向适合修改。RMS等量必须结合上下文和干预，不能把数值大直接解释为重要。此教程使用non-thinking参考文本，最终原作轨道必须另外以thinking与32,768生成上限建立循环／截断基线。
+These observations did not reveal the cause of the loops, nor did they prove that a particular layer or direction was suitable for modification. RMS and related statistics must be interpreted alongside context and interventions; large values alone do not establish importance. This tutorial uses non-thinking reference text. The final original-protocol track must separately establish a looping and truncation baseline with thinking enabled and a 32,768-token generation cap.
 
-原始基座的8条训练练习生成已按原作温度、top-p、top-k、presence penalty及32,768上限提交，当前等待GPU0统一锁。它用于取得失败轨迹，不是公开测试准确率；HF与原作vLLM的可比性尚未建立。完整MATH-500确认、参考重放、隔离独立发现及编辑方向／机制比较均仍未完成。
+Generation on 8 training exercises using the original base has been submitted with the original temperature, top-p, top-k, presence penalty, and 32,768-token limit; it is waiting for the shared GPU0 lock. This run is intended to obtain failure trajectories, not public-test accuracy; comparability of HF with the original vLLM has not yet been established. Full MATH-500 validation, reference replay, isolated independent discovery, and editing direction/mechanism comparison are still pending.

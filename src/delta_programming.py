@@ -61,7 +61,7 @@ def weighted_truncate(A,B,C,rank):
 
 
 def emit(output,base,pairs,method,details,*,method_provenance=None):
-    """将有效低秩更新保存为缩放为 1 的通用因子。"""
+    """Save an effective low-rank update as generic factors with unit scaling."""
     targets={};data={}
     for name,(A,B) in pairs.items():
         A=A.float().contiguous();B=B.float().contiguous();rank=A.shape[0]

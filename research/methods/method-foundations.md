@@ -1,159 +1,159 @@
-# WSP-toolkit 工具的方法依据
+# WSP-toolkit Method Foundations
 
-本文记录早期的文献与方法依据。配对激活替换、SparseGPT 局部补偿和 TIES 合并均已有实现。现有代码、待接入能力与新增解释方法统一记录在工具设计和目录中。 [合并路线](../../docs/tool-design.md#9-已有实现与合并路线) · [工具目录](../../docs/tool-catalog.json) · [方法与权限](../../docs/tool-permissions.md)
+This document records the literature behind early method selection. Paired activation patching, SparseGPT local compensation, and TIES merging have since been implemented. Existing code, capabilities awaiting integration, and new interpretability methods are tracked together in the tool design and catalog. [Integration roadmap](../../docs/tool-design.md#9-existing-implementations-and-integration-roadmap) · [Tool catalog](../../docs/tool-catalog.json) · [Methods and permissions](../../docs/tool-permissions.md)
 
-新增实做：[模型编程内容扩展](../reports/programming-expansion.md)已将Model Soups／Task Arithmetic的更新组合、SVD-LLM目标启发的delta压缩、ShortGPT的BI深度操作落实为代码与四模型真实权重几何。该文逐项说明论文原方法、当前适配、局部最优性质与任务效果边界，优先于下文对应“拟实现”状态。组合与纯权重压缩已在12个训练更新上执行；激活、因果层删除和完整公开效果尚在运行。
+The [model-programming expansion](../reports/programming-expansion.md) implements Model Soups/Task Arithmetic update combinations, delta compression inspired by SVD-LLM objectives, and ShortGPT BI-based depth operations, with real weight-geometry measurements on four models. It describes each source method, adaptation, local optimality property, and limit on task-level conclusions. That report supersedes the corresponding pending statuses below. Combination and weight-only compression have been applied to 12 trained updates; at the time of this record, activation studies, causal layer deletion, and full public-task evaluations were still running.
 
-日期：2026-11-06。本文记录早期方法选择的文献依据。当前实现、真实示例和运行环境见[实现清单](../../docs/tool-inventory.md)，接口契约见[工具设计](../../docs/tool-design.md)。
+Date: 2026-11-06. This is the literature basis for early method selection. See the [implementation inventory](../../docs/tool-inventory.md) for current implementations, real examples, and environments, and the [tool design](../../docs/tool-design.md) for interface contracts.
 
-## 1. 设计原则与对已有工作的纠正
+## 1. Design Principles and Corrections to Earlier Work
 
-工具按“论文中的问题与方法 → 需要测量的量 → 参数操作 → 实验检验”推导。先复现，再封装，再研究 Agent 的选择策略。每种新增算法必须有出处和明确的实现差异；实验有效不等于算法来源可靠，算法有出处也不等于实验必然有效。
+Derive tools through the chain **paper-defined problem and method → measurable quantities → parameter operations → experimental tests**. Reproduce a method before exposing it as a tool, then investigate agent selection strategies. Every new algorithm requires provenance and an explicit account of implementation differences. A working experiment does not establish reliable algorithmic provenance, and a cited algorithm does not establish a valid experiment.
 
-区分三类：
+Distinguish three categories:
 
-- **论文方法复现**：忠实实现目标论文规定的目标、统计量、选择规则和更新步骤，提供参考实现与数值对照。
-- **论文启发的适配／新假设**：写明改变了什么、为什么适配、需要什么对照；不能沿用原算法名称暗示完整复现。
-- **工程基础设施**：读取张量、挂钩、检查点、导出、回滚等。其必要性来自可操作性与复现要求，不应包装成算法贡献，也不必为每个工程函数强行寻找论文。
+- **Method reproduction:** Implement the target paper's objective, statistics, selection rules, and update steps faithfully, with a reference implementation and numerical comparisons.
+- **Paper-inspired adaptation or new hypothesis:** State what changes, why adaptation is necessary, and which controls it requires. The original algorithm's name must not imply a complete reproduction.
+- **Engineering infrastructure:** Tensor reads, hooks, checkpoints, export, rollback, and related functions support operability and reproducibility. They are not algorithmic contributions, and each engineering function does not require an artificial paper justification.
 
-现有代码审计结论：
+The earlier code audit found:
 
-| 现有操作 | 实际身份 | 修订处理 |
+| Existing operation | Classification | Treatment |
 |---|---|---|
-| 整个 MLP down_proj 乘 0.8/0.9/1.1/1.2 | 手工定义的一维权重扰动搜索 | 保留为探索性诊断／基线，不作为有论文依据的核心优化算法 |
-| 通道评分 `mean(abs(activation)) * norm(down_column, 2)` | 自定义的激活感知通道启发式 | 不等于 Wanda，不等于 LLM-Pruner，后续须由明确方法替代或单独标为新假设 |
-| 联动删除 gate/up 的行与 down 的列 | 合法 MLP 结构变换 | 工程结构操作可保留，但不能凭这一点称完整实现了 LLM-Pruner |
-| 逐层 MLP 输出置零 | 消融诊断 | 只测干预效果，不自动产生最优编辑方向 |
-| 导出、回滚、文件哈希和独立加载 | 实验基础设施 | 保留；证明修改可追溯与可恢复，不证明优化方法有效 |
+| Scale the entire MLP `down_proj` by 0.8/0.9/1.1/1.2 | Manually defined one-dimensional weight-perturbation search | Retain as exploratory diagnosis or a baseline, rather than a core paper-derived optimization method |
+| Channel score `mean(abs(activation)) * norm(down_column, 2)` | Custom activation-aware channel heuristic | Replace with a clearly defined method or label it as a new hypothesis; it is neither Wanda nor LLM-Pruner |
+| Jointly remove gate/up rows and down columns | Valid MLP structural transformation | Retain the operation without claiming a complete LLM-Pruner implementation |
+| Zero MLP outputs layer by layer | Ablation diagnosis | Measure intervention effects without claiming to derive an optimal edit direction |
+| Export, rollback, file hashing, and independent loading | Experimental infrastructure | Establish traceability and recoverability, without claiming optimization effectiveness |
 
-此前“搜索集 NLL 降低”的结果只属于上述探索操作，不能作为论文方法复现结果，也不能推断任务生成准确率或一般能力提升。既有产物不删除、不改写，之后的论文依据版本使用新实验目录。
+Earlier reductions in search-set NLL belong to these exploratory operations. They do not establish reproduction of a paper method, generation-accuracy gains, or improved general capability. Existing artifacts are retained unchanged; subsequent paper-based studies use versioned experiment directories.
 
-## 2. 剪枝工具从哪些论文推导
+## 2. Literature Behind the Pruning Tools
 
-记线性层为 Y=WX，其中 W 的行为输出维度、列为输入维度，X 的列为校准 token。不同论文的归一化约定可以不同；比较实现时应固定约定。
+Write a linear layer as Y=WX: W rows are output dimensions, W columns are input dimensions, and X columns are calibration tokens. Papers may use different normalization conventions; fix these conventions before comparing implementations.
 
-### 2.1 OBD / OBS：删参数应考虑损失变化和补偿
+### 2.1 OBD/OBS: Loss Changes and Compensation When Deleting Parameters
 
-OBD 使用局部二阶近似衡量删权重损伤；在梯度近似为零、忽略 Hessian 非对角项时，单权重分数可写为 1/2 H_ii w_i²。OBS 保留参数耦合，经典局部二次问题给出删除参数 i 的补偿方向：
+OBD estimates deletion damage using a local second-order approximation. With approximately zero gradient and Hessian off-diagonal terms ignored, a single-weight score is 1/2 H_ii w_i². OBS retains parameter coupling. Its classical local quadratic problem gives the following compensation direction when deleting parameter i:
 
-δw = − w_i / (H⁻¹)_ii · H⁻¹ e_i。
+δw = − w_i / (H⁻¹)_ii · H⁻¹ e_i.
 
-这有局部二阶、可逆／正定近似等条件，不是任意 LLM 参数的全局最优保证。
+This result depends on a local second-order approximation and suitable invertibility or positive-definiteness conditions. It is not a global optimality guarantee for arbitrary LLM parameters.
 
-工具需求：估计局部曲率、计算删除损伤、生成补偿更新。大模型不直接构造全参数 Hessian；向下使用层级近似。来源：[OBD，1989](https://proceedings.neurips.cc/paper/1989/hash/6c9882bbac1c7093bd25041881277658-Abstract.html)、[OBS，1992](https://proceedings.neurips.cc/paper/1992/hash/303ed4c69846ab36c2904d3ba8573050-Abstract.html)。
+Required tools estimate local curvature, calculate deletion damage, and generate compensation updates. Large models require layer-local approximations rather than a full-parameter Hessian. Sources: [OBD, 1989](https://proceedings.neurips.cc/paper/1989/hash/6c9882bbac1c7093bd25041881277658-Abstract.html), [OBS, 1992](https://proceedings.neurips.cc/paper/1992/hash/303ed4c69846ab36c2904d3ba8573050-Abstract.html).
 
-### 2.2 Wanda：由输入激活决定逐权重的重要性
+### 2.2 Wanda: Per-Weight Importance from Input Activations
 
-论文基本评分：S_ij = |W_ij| · ||X_j,:||₂，并按输出行选择低分权重剪除。工具应分别提供激活二阶能量采集、逐权重评分和每行掩码生成。必须验证激活统计、掩码与目标稀疏率符合参考实现；不能把列评分换成任意聚合后仍命名为 Wanda。
+The paper's basic score is S_ij = |W_ij| · ||X_j,:||₂. Low-scoring weights are selected within each output row. Tools should expose activation second-moment energy collection, per-weight scoring, and rowwise mask generation separately. Verify statistics, masks, and target sparsity against the reference implementation. Arbitrarily aggregating scores across columns does not preserve the Wanda method.
 
-定位：无梯度、低成本的可靠基线；非结构化零权重不会自动带来稠密推理加速。来源：[论文，ICLR 2024，预印本 2023](https://arxiv.org/abs/2306.11695)、[作者代码](https://github.com/locuslab/wanda/blob/main/lib/prune.py)。
+Wanda provides a gradient-free, low-cost baseline. Unstructured zero weights do not automatically accelerate dense inference. Sources: [Paper, ICLR 2024, preprint 2023](https://arxiv.org/abs/2306.11695), [Author code](https://github.com/locuslab/wanda/blob/main/lib/prune.py).
 
-### 2.3 SparseGPT：剪枝同时重建层输出
+### 2.3 SparseGPT: Pruning with Layer-Output Reconstruction
 
-目标可表达为 min_W' ||WX − W'X||²_F，附加目标稀疏约束。其方法利用输入二阶统计和近似二阶更新，在删权重时向保留权重传播补偿；不是普通幅度剪枝后再微调。
+The objective can be written as min_W' ||WX − W'X||²_F with a target sparsity constraint. Input second-order statistics and approximate second-order updates propagate deletion error into retained weights. This differs from ordinary magnitude pruning followed by fine-tuning.
 
-拟封装 `collect_input_gram`、`sparsegpt_prune_and_compensate`，输出稀疏权重、掩码、层重建误差。阻尼、分块、列更新和半结构化模式必须对照作者实现；不能把一个普通最小二乘求解器直接标为 SparseGPT。来源：[论文，ICML 2023](https://arxiv.org/abs/2301.00774)、[作者代码](https://github.com/IST-DASLab/sparsegpt/blob/master/sparsegpt.py)。
+Proposed tools are `collect_input_gram` and `sparsegpt_prune_and_compensate`, returning sparse weights, masks, and layer reconstruction errors. Damping, blocking, column updates, and semi-structured modes must follow the author implementation. An ordinary least-squares solver alone is not SparseGPT. Sources: [Paper, ICML 2023](https://arxiv.org/abs/2301.00774), [Author code](https://github.com/IST-DASLab/sparsegpt/blob/master/sparsegpt.py).
 
-### 2.4 LLM-Pruner：对相互依赖的结构成组剪枝
+### 2.4 LLM-Pruner: Group Pruning of Dependent Structures
 
-该方法先识别耦合结构，再做梯度相关的重要性估计，之后可进行 LoRA 恢复。需要按论文第 3.1、3.2、3.3 节分别核对依赖规则、分组评分及恢复设置。
+LLM-Pruner identifies coupled structures, estimates gradient-related importance, and performs LoRA recovery. Check dependency rules, group scoring, and recovery settings against Sections 3.1, 3.2, and 3.3 of the paper respectively.
 
-拟封装 `build_pruning_groups`、`estimate_group_importance`、`prune_groups`。作为解释用的一阶近似，删除参数组 G 对损失的变化约为 −Σ_(i∈G) w_i ∂L/∂w_i；取绝对值、逐样本聚合和二阶项是不同选择，必须按具体复现变体声明，不能用这个简式代替完整算法。
+Proposed tools are `build_pruning_groups`, `estimate_group_importance`, and `prune_groups`. As an explanatory first-order approximation, deleting parameter group G changes loss by approximately −Σ_(i∈G) w_i ∂L/∂w_i. Absolute values, per-example aggregation, and second-order terms define different estimator choices and must be declared for each reproduction variant. This simplified expression does not replace the full algorithm.
 
-Qwen3 的 gated MLP 至少需要联动 gate/up 行和 down 列；这只是局部适配，全模型依赖图和 GQA 结构仍需另行核对。来源：[论文，NeurIPS 2023，方法第 3 节](https://arxiv.org/html/2305.11627v3)、[作者代码](https://github.com/horseee/LLM-Pruner)。
+Qwen3's gated MLP requires at least coupled gate/up rows and down columns. This is a partial adaptation; the complete model dependency graph and GQA structures require separate checks. Sources: [Paper, NeurIPS 2023, Methods Section 3](https://arxiv.org/html/2305.11627v3), [Author code](https://github.com/horseee/LLM-Pruner).
 
-### 2.5 ShortGPT / SliceGPT：直接减少深度或稠密维度
+### 2.5 ShortGPT/SliceGPT: Reducing Depth or Dense Dimensions
 
-ShortGPT 以层输入输出变化评估层冗余，提供层删除路线。SliceGPT 利用计算不变性及旋转变换，使删除行列形成更小的稠密矩阵。二者都值得作为实际部署效率的对照；任意删除层不叫 ShortGPT，任意裁剪矩阵不叫 SliceGPT。
+ShortGPT estimates layer redundancy from input/output changes and provides a layer-removal route. SliceGPT uses computational invariance and rotations to remove rows and columns, producing smaller dense matrices. Both are useful deployment-efficiency comparisons. Arbitrary layer removal is not ShortGPT, and arbitrary matrix cropping is not SliceGPT.
 
-工具需求分别为层影响评分／层删除，以及论文指定的旋转／切片流程。来源：[ShortGPT](https://arxiv.org/abs/2403.03853)、[SliceGPT 作者页](https://www.microsoft.com/en-us/research/publication/slicegpt-compress-large-language-models-by-deleting-rows-and-columns/)。
+Required tools cover layer-influence scoring and removal, plus the paper-defined rotation and slicing procedures. Sources: [ShortGPT](https://arxiv.org/abs/2403.03853), [SliceGPT author page](https://www.microsoft.com/en-us/research/publication/slicegpt-compress-large-language-models-by-deleting-rows-and-columns/).
 
-领域保护的相关工作包括 [Cus-Prun](https://aclanthology.org/2025.findings-acl.1201/)。复现通用剪枝方法之后，再把领域数据或约束引入方法；这种适配需与原方法和既有领域剪枝对照，不能仅因使用领域校准数据就主张新颖。
+Domain-preserving pruning includes [Cus-Prun](https://aclanthology.org/2025.findings-acl.1201/). Introduce domain data or constraints after reproducing a general pruning method, then compare the adaptation with that method and existing domain-pruning work. Domain-specific calibration data alone does not establish novelty.
 
-## 3. 经典后训练如何提供参数修改的参照
+## 3. Post-Training as a Reference for Parameter Changes
 
-这里同时覆盖训练式后训练（SFT、偏好优化、参数高效微调）和训练后压缩。二者对数据、梯度及计算资源的需求不同，必须分轨报告。
+This section covers both post-training—SFT, preference optimization, and parameter-efficient fine-tuning—and post-training compression. Their data, gradient, and compute requirements differ and must be reported separately.
 
-### 3.1 SFT：用任务目标定义更新方向
+### 3.1 SFT: Defining Update Directions Through Task Objectives
 
-SFT 最小化示范答案的负对数似然。以普通 SGD 为参照，一步更新 Δθ = −η∇L_SFT；若使用 Adam，方向还受到动量与二阶矩预条件影响，不能直接等同于负梯度。
+SFT minimizes answer negative log-likelihood. With ordinary SGD, a single update is Δθ = −η∇L_SFT. Adam additionally uses momentum and second-moment preconditioning, so its update is not simply the negative gradient.
 
-拟提供梯度范数、层间梯度分布、候选增量与负梯度的夹角，以及方向导数 <∇L, Δθ>。这些是局部诊断，不保证有限步长后的真实改善。梯度来自训练／校准数据，不使用最终测试。
+Proposed diagnostics include gradient norms, layerwise gradient distributions, angles between candidate updates and the negative gradient, and directional derivatives <∇L, Δθ>. These are local measurements and do not guarantee improvement after a finite step. Gradients come from training or calibration data, never the final test set.
 
-实验用途：用标准 SFT 作为“正常优化能做到什么”的参照，再比较 Agent 的参数操作是否以更低成本取得相似目标改善。来源：[InstructGPT，2022，SFT 与后续 RLHF 流程](https://arxiv.org/abs/2203.02155)。
+Use standard SFT to establish what ordinary optimization achieves, then test whether agent-selected parameter operations yield comparable objective improvements at lower cost. Source: [InstructGPT, 2022, SFT and subsequent RLHF process](https://arxiv.org/abs/2203.02155).
 
-### 3.2 LoRA：限制更新的有效自由度
+### 3.2 LoRA: Restricting the Effective Degrees of Freedom
 
-LoRA 将更新参数化为 ΔW=(α/r)BA，冻结基础权重、训练低秩因子。它给工具设计的依据是“更新可以在较小自由度中表达”，而非“任何手写低秩矩阵都有效”。
+LoRA parameterizes ΔW=(α/r)BA, freezes base weights, and trains low-rank factors. It motivates representing updates with fewer degrees of freedom; it does not establish the effectiveness of arbitrary handwritten low-rank matrices.
 
-拟提供低秩增量的构造、合并、范数约束与回滚；用实际训练得到的 LoRA 增量做参照，比较有效秩、层分布和子空间重叠。对梯度做 SVD 后手写低秩更新属于新适配，不是 LoRA 原算法；单步梯度也未必低秩。
+Proposed tools construct, merge, constrain, and revert low-rank updates. Compare them with actual trained LoRA updates using effective rank, layer distribution, and subspace overlap. Applying SVD to gradients to construct a handwritten update is a new adaptation, not the original LoRA algorithm. A single-step gradient need not be low-rank.
 
-LoRA 减少的是可训练参数，合并后通常不会减少基础模型参数或推理 FLOPs，不能当成模型压缩。来源：[LoRA，ICLR 2022，预印本 2021](https://arxiv.org/abs/2106.09685)。
+LoRA reduces trainable parameters. Merging it usually leaves base-model parameter counts and inference FLOPs unchanged, so it does not by itself compress the model. Source: [LoRA, ICLR 2022, preprint 2021](https://arxiv.org/abs/2106.09685).
 
-### 3.3 RLHF：用参考策略约束行为漂移
+### 3.3 RLHF: Constraining Behavioral Drift with a Reference Policy
 
-相关 RLHF 目标在提高奖励的同时，对相对参考策略的 KL 偏离施加惩罚。参数距离小并不保证行为偏离小，因此只限制 ||Δθ|| 不够。
+The relevant RLHF objective combines reward improvement with a KL penalty relative to a reference policy. Small parameter distance does not guarantee small behavioral drift; a bound on ||Δθ|| alone is insufficient.
 
-拟提供在保护数据上的 token／序列概率变化和 KL 估计，同时保留领域真实任务指标。KL 与序列奖励都依赖采样分布、方向和估计方式；有限数据上的小 KL 不保证全部能力保留。把 KL 作为候选编辑的约束，属于借鉴目标形式，不是实现了 PPO。
+Proposed tools measure token/sequence probability changes and estimate KL on guard data while retaining actual domain-task metrics. KL and sequence rewards depend on sampling distribution, direction, and estimation method. Small KL on finite data does not guarantee retention of every capability. Using KL to constrain candidate edits borrows the objective form; it does not implement PPO.
 
-来源：[InstructGPT](https://arxiv.org/abs/2203.02155)。
+Source: [InstructGPT](https://arxiv.org/abs/2203.02155).
 
-### 3.4 DPO：参数优化依赖具体偏好对
+### 3.4 DPO: Optimizing with Explicit Preference Pairs
 
-DPO 使用偏好回答 y+ 与非偏好回答 y−，优化相对于参考模型的对数概率比差。记 z = β[log πθ(y+|x)/πref(y+|x) − log πθ(y−|x)/πref(y−|x)]，目标为 −E log σ(z)。
+DPO compares preferred answer y+ and dispreferred answer y− through log-probability ratios to a reference model. Define z = β[log πθ(y+|x)/πref(y+|x) − log πθ(y−|x)/πref(y−|x)]; the objective is −E log σ(z).
 
-拟提供偏好 margin 测量与相应目标的梯度诊断；如果没有可信的偏好对，不启用这条工具路线。提高某类回答概率不能自动称为 DPO。自然推导出的方向仍依赖真实数据，不由 LLM 凭描述猜测。
+Proposed tools measure preference margins and diagnose gradients of that objective. Enable this route only with credible preference pairs. Raising the probability of an answer category alone is not DPO. Derived directions still depend on real data rather than an LLM guessing them from descriptions.
 
-来源：[DPO，NeurIPS 2023，目标式及其分析](https://arxiv.org/html/2305.18290v3)。
+Source: [DPO, NeurIPS 2023, Objective Formula and Its Analysis](https://arxiv.org/html/2305.18290v3).
 
-### 3.5 蒸馏：压缩后的行为恢复目标
+### 3.5 Distillation: Recovery Objectives After Compression
 
-经典知识蒸馏用教师软输出训练学生，可与硬标签损失结合。对于同 tokenizer 的剪枝学生，可拟用教师／学生输出分布的 KL 作为恢复目标；温度和硬软目标权重需要声明。
+Classical knowledge distillation trains students on teacher soft outputs, optionally combined with hard-label losses. For a pruned student sharing the tokenizer, teacher/student output KL can define a recovery objective. Declare temperature and the weights of hard and soft targets.
 
-拟提供教师输出缓存、学生漂移测量和恢复训练。仅测量 KL 属于诊断；真正在该目标上更新学生参数才属于恢复训练。单独比较无训练压缩与加入蒸馏恢复的效果和总成本。
+Proposed tools cache teacher outputs, measure student drift, and train recovery updates. Measuring KL alone is diagnostic; updating student parameters under that objective is recovery training. Compare both effectiveness and total cost between training-free compression and compression followed by distillation.
 
-来源：[Hinton 等，Distilling the Knowledge in a Neural Network，2015](https://arxiv.org/abs/1503.02531)。
+Source: [Hinton et al., Distilling the Knowledge in a Neural Network, 2015](https://arxiv.org/abs/1503.02531).
 
-### 3.6 Task Arithmetic：操作已经训练得到的方向
+### 3.6 Task Arithmetic: Operating on Trained Directions
 
-Task Arithmetic 将任务微调后参数与原参数之差作为 task vector，研究缩放、加减和组合这些方向。它提供的是有训练来源的权重方向，不支持从任务文字描述任意猜测 delta 就必然有效。
+Task Arithmetic defines a task vector as fine-tuned parameters minus base parameters, then studies scaling, addition, subtraction, and combinations. It supplies directions with training provenance, without establishing that arbitrary deltas guessed from task descriptions will work.
 
-本项目已实现全局系数的旧预实验；公开任务轨道增加四个归一化深度分组的系数搜索，明确标为**层分组适配／待检验假设**，不是论文原始实验的完整复现。方向由标准 LoRA SFT 提供；所有控制策略复用同一训练方向和候选空间，并单独记录方向训练成本。不能将这条路线称为全程无训练优化。
+An earlier pilot implements global coefficients. The public-task track adds searches over four normalized-depth groups, explicitly labeled a **layer-group adaptation and hypothesis to test**, rather than a complete reproduction of the original experiments. Standard LoRA SFT supplies the direction. Every control strategy shares the direction and candidate space, and its training cost is recorded separately. The full route is therefore not training-free optimization.
 
-来源：[Editing Models with Task Arithmetic，ICLR 2023](https://arxiv.org/abs/2212.04089)。具体搜索与确认方案见 `research/search-protocol.md`。
+Source: [Editing Models with Task Arithmetic, ICLR 2023](https://arxiv.org/abs/2212.04089). Search and confirmation settings are documented in `research/search-protocol.md`.
 
-### 3.7 Outcome verifier：训练真实候选的结果判别，再用于选择
+### 3.7 Outcome Verifiers: Training on Actual Candidates Before Selection
 
-[Cobbe等，Training Verifiers to Solve Math Word Problems，2021，第4.2节](https://arxiv.org/html/2110.14168v2#S4.SS2)以生成器在训练题上采样的候选及其最终答案是否正确为监督，训练核验器，并在推理时对多个候选排序。这为`generate_training_candidates`、`label_execution_outcomes`、`fit_verifier_delta`、`rank_candidates`提供方法依据。其原实验的模型规模、采样数量和训练头／辅助目标不能直接等同于本项目的LoRA二元标签训练。
+[Cobbe et al., Training Verifiers to Solve Math Word Problems, 2021, Section 4.2](https://arxiv.org/html/2110.14168v2#S4.SS2) train a verifier on generator candidates sampled for training questions and labeled by final-answer correctness, then rank multiple candidates at inference. This motivates `generate_training_candidates`, `label_execution_outcomes`, `fit_verifier_delta`, and `rank_candidates`. The original model scales, sample counts, verifier heads, and auxiliary objectives are not equivalent to this project's LoRA binary-label training.
 
-当前FinQA确定性算子扰动仅是工程基线，不是该论文的真实候选训练复现；“拒绝后重写一次”也不是论文的多候选排序。已有全量训练监督审计表明，只看首个算子的简单分类器就能在独立于该分类器拟合的1,236条样本上达到84.87%，有明显捷径风险，但不能据此证明语言模型学到了同一捷径。后续应按上述论文来源构造训练分区的真实planner候选，并分别控制负例来源和推理选择策略，不能只把旧基线改名。
+Current deterministic FinQA operator perturbations provide an engineering baseline rather than reproduction of training on real generator candidates. Rewriting once after rejection also differs from ranking multiple candidates. An audit of all training supervision found that a simple classifier using only the first operator scores 84.87% on 1,236 examples independent of its fitting data. This demonstrates a shortcut risk, not proof that the language model learned the same shortcut. Build real planner candidates on the training partition using the cited method, and separately control negative-example sources and inference selection. Renaming the old baseline is insufficient.
 
-[Lightman等，Let's Verify Step by Step，2023](https://arxiv.org/abs/2305.20050)区分过程与结果监督。本项目没有步骤正确性标注，不能仅凭DSL每步可执行或最终数字正确就声称实施过程监督。真实候选训练和排序仍待实现；其数据与预算控制见`research/verifier-followup.md`。
+[Lightman et al., Let's Verify Step by Step, 2023](https://arxiv.org/abs/2305.20050) distinguish process from outcome supervision. This project lacks step-correctness labels; executable DSL steps or a correct final number do not establish process supervision. Real-candidate training and ranking remain future work in this record. See `research/verifier-followup.md` for data and budget controls.
 
-## 4. 由上述文献导出的最小工具集
+## 4. Minimal Tool Families Derived from the Literature
 
-| 工具族 | 测量／操作 | 方法来源 | 当前状态 |
+| Tool family | Measurement or operation | Method source | Status in the early record |
 |---|---|---|---|
-| 权重与激活观测 | 权重幅度、输入 L2 能量、输入 Gram 统计 | Wanda、SparseGPT | Wanda 输入 L2 能量已与固定版本作者实现核对；Gram／曲率尚未实现 |
-| 结构重要性 | 依赖分组、组梯度重要性 | LLM-Pruner | 已实现明确声明的 gated-MLP 一阶适配；不是完整 LLM-Pruner |
-| 稀疏剪枝与补偿 | 逐权重掩码、二阶补偿、层重建误差 | Wanda、SparseGPT、OBS | Wanda 掩码已核对；SparseGPT／OBS 补偿尚未实现 |
-| 结构压缩 | 联动组删除、合法配置导出 | LLM-Pruner；可另接 ShortGPT | MLP 联动切片与独立加载已验证；全依赖图、ShortGPT 尚未实现 |
-| 更新方向诊断 | 任务梯度、方向导数、标准训练增量比较 | SFT／DPO 的明确目标与更新参照 | 拟实现；梯度诊断不是独立优化算法 |
-| 低秩更新 | 增量合并、受约束操作、实际 LoRA 对照 | LoRA | 已实现冻结基座训练、delta-only 导出、函数式加载和 FP32 合并对照；公开任务效果仍需评估 |
-| 行为保护与恢复 | 参考分布漂移、领域指标、蒸馏恢复 | RLHF 的 KL 目标、知识蒸馏 | 拟实现；旧英文 NLL guard 不等于 KL |
-| 实验管理 | 提交、回滚、来源／许可／配置记录、独立评估 | 工程复现要求 | 已有可执行方法注册表、来源哈希、检查点和独立评分器；不等于全系统形式验证 |
+| Weight and activation observation | Weight magnitude, input L2 energy, input Gram statistics | Wanda, SparseGPT | Input L2 energy checked against pinned Wanda code; Gram/curvature not yet implemented |
+| Structural importance | Dependency grouping and group-gradient importance | LLM-Pruner | Explicit first-order gated-MLP adaptation implemented; full LLM-Pruner excluded |
+| Sparse pruning and compensation | Per-weight masks, second-order compensation, layer reconstruction error | Wanda, SparseGPT, OBS | Wanda mask checked; SparseGPT/OBS compensation not yet implemented |
+| Structural compression | Coupled group removal and export of valid configurations | LLM-Pruner; potentially ShortGPT | Coupled MLP slicing and independent reload checked; full dependency graph and ShortGPT not yet implemented |
+| Update-direction diagnosis | Task gradients, directional derivatives, and standard trained updates | Explicit SFT/DPO objectives and update references | Planned; gradient diagnosis alone is not an optimization algorithm |
+| Low-rank updates | Merging, constrained operations, and actual LoRA comparisons | LoRA | Frozen-base training, delta-only export, functional loading, and FP32 merge comparison implemented; public-task effects pending |
+| Behavioral preservation and recovery | Reference-distribution drift, domain metrics, distillation recovery | RLHF KL objectives and knowledge distillation | Pending; the earlier English NLL guard is not KL |
+| Experiment management | Commit, rollback, provenance/license/configuration records, independent evaluation | Engineering reproducibility | Executable method registry, source hashes, checkpoints, and separate scorers available; no full-system formal verification claim |
 
-每个算法结果应附 method_id、论文与代码版本、实现类型（复现／适配）、目标函数、校准数据指纹、梯度／曲率权限、修改粒度、预算与验证误差。正式复现实验还需记录官方代码的固定 commit，不能只记录可变的 main 分支。
+Each algorithm result should record method_id, paper and code versions, implementation type (reproduction/adaptation), objective, calibration-data fingerprint, gradient/curvature permissions, edit granularity, budget, and validation error. Formal reproductions additionally pin official code commits rather than a mutable main branch.
 
-给 Agent 的决策权限应当建立在这些已验证操作之上，例如选择论文算法、剪枝预算、更新位置、低秩 rank、候选步长及是否回滚。选择本身可以是研究假设，但须与相同权限、相同总成本的非 LLM 搜索比较。为得到任意修改而开放一个万能写张量接口，不构成有效研究方法。
+Agents should choose among validated operations: algorithms, pruning budgets, update sites, ranks, candidate step sizes, and rollback. Selection itself can be a research hypothesis, but must be compared with non-LLM search under the same permissions and total cost. Exposing arbitrary tensor writes alone does not establish a valid research method.
 
-## 5. 新实验路线与验收
+## 5. Experimental Route and Acceptance Criteria
 
-1. **先复现两个锚点。** Wanda 作为无梯度权重剪枝基线；LLM-Pruner 的明确变体作为结构剪枝主线。SparseGPT 补充二阶补偿对照；不要求第一轮同时完整实现所有候选方法。
-2. **再建立训练参照。** 在相同领域数据上进行预算可控的 SFT/LoRA，记录实际参数增量与行为变化。只在有偏好数据时加入 DPO。训练不是用户禁止项；它在这里首先是参照与可选恢复路径，不能隐匿为“无训练权重编程”。
-3. **再交给 Agent。** 原方法配置与 Agent 选择配置共享底层实现、数据权限及总成本预算，比较固定策略、普通搜索与 Agent。
-4. **最后测迁移与真实效率。** 使用未参与选择的任务数据，报告生成准确率、领域关键子任务、行为漂移、显存与部署耗时；新实验不使用此前已经查看过的最终测试作唯一确认集。
+1. **Reproduce two anchors first.** Use Wanda for gradient-free weight pruning and an explicit LLM-Pruner variant for structural pruning. Add SparseGPT as a second-order compensation control without requiring all candidates in the first round.
+2. **Build a training reference.** Run budget-controlled SFT/LoRA on the same domain data and record actual parameter and behavioral changes. Add DPO only when preference data exists. Training is allowed as a reference and optional recovery path; its cost cannot be hidden under a training-free programming claim.
+3. **Delegate choices to an agent.** Original-method and agent-selected configurations share implementation, data permissions, and total budget. Compare fixed strategies, ordinary search, and agent selection.
+4. **Test transfer and deployment efficiency.** Use task data excluded from selection to report generation accuracy, key domain subtasks, behavioral drift, memory, and deployment time. A previously inspected final test cannot serve as the sole confirmation set for the new study.
 
-数值验收：Wanda 的统计与掩码应在明确并处理 ties 的条件下与参考实现一致；SparseGPT 应比较同一输入和配置下的重建误差与更新；LLM-Pruner 应核对剪枝组、评分、保留结构与恢复设置。逐层数值一致性通过后，才评价任务指标。
+Numerical acceptance requires Wanda statistics and masks to match the reference under explicit tie handling. SparseGPT comparisons must check reconstruction errors and updates for identical inputs and settings. LLM-Pruner checks cover groups, scores, retained structures, and recovery settings. Evaluate task metrics after layerwise numerical checks pass.
 
-研究问题因此更明确：**LLM 能否利用现有剪枝和后训练方法提供的可解释测量与受约束操作，在相同资源下，比固定算法配置及普通搜索更有效地选择、组合和应用这些操作？** 若要提出全新参数变换，必须单独说明推导与实验，不把它混入论文复现工具中。
+The research question is: **Can an LLM use interpretable measurements and constrained operations from established pruning and post-training methods to select, combine, and apply operations more effectively than fixed configurations and ordinary search at matched resources?** New parameter transformations require their own derivations and experiments; they must not be presented as paper reproductions.

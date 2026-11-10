@@ -1,4 +1,4 @@
-"""用真实检查点演示复用注意力快照和热力图。"""
+"""Demonstrate attention snapshot reuse and heatmaps with a real checkpoint."""
 
 import argparse
 import asyncio
@@ -13,7 +13,7 @@ import numpy as np
 
 
 async def main(model):
-    """比较首层计算与原始注意力，并查看全层传播图。"""
+    """Compare first-layer computations to raw attention, and view full-layer propagation graphs."""
     with TemporaryDirectory(prefix="wsp-rollout-") as workspace:
         server = StdioServerParameters(command=sys.executable,
                                        args=["-m", "weight_programming.mcp_server", "--model", model,

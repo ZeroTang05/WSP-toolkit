@@ -1,55 +1,55 @@
-# 从工具语义到跨模型趋势：可检验的桥梁
+# From tool semantics to cross-model trends: a testable bridge
 
-状态：候选分析框架，不是已验证结论或新颖性声明。它补充 `paper-spec.md`，不替代公开 benchmark、完整基线和真实工作流实验。
+Status: Candidate analytical framework, not validated conclusion or novelty claim. It complements `paper-spec.md` and does not replace public benchmarks, full baselines, and real workflow experiments.
 
-## 1. 迁移的是操作计划，而非参数坐标
+## 1. What is migrated is the operation plan, not the parameter coordinates
 
-不同模型的参数维度和坐标系不同，不能把一个模型的 delta 直接加到另一个模型。可比较或迁移的对象是工具级计划，例如“对本模型的数学任务方向施加 0.5 系数”“对归一化中层的合法 MLP 组分配剪枝预算”。目标模型使用自己的数据观测、任务方向和架构适配器生成实际补丁。
+Different models have different parameter dimensions and coordinate systems, and the delta of one model cannot be directly added to another model. Comparable or transferable objects are tool-level plans, such as "Apply a 0.5 coefficient to the mathematical task direction of this model" and "Allocate a pruning budget to the valid MLP group of normalized mid-levels." The target model generates the actual patches using its own data observations, task directions, and architecture adapters.
 
-这种迁移仍可能需要目标模型的训练／校准计算；“不额外查询目标开发集”不能表述为零成本或零数据迁移。跨架构剪枝／策略迁移已有相关研究，正式新颖性仍需进一步全文对照。
+This migration may still require training/calibration calculations for the target model; "no additional queries to the target dev set" cannot be stated as zero cost or data-free transfer. There have been related studies on cross-architecture pruning/policy migration, and the formal novelty still requires further full-text comparison.
 
-## 2. 条件性局部响应界
+## 2. Conditional local response bounds
 
-对连续、保持参数形状的工具子集，令模型 m 的架构编译结果生成 K 个干预方向 D_m，操作坐标为 a∈R^K。定义共同任务上的平滑代理风险：
+For a subset of continuous, parameter-shape-preserving tools, let the architecture-specific compilation for model m produce K intervention directions D_m with action coordinates a∈R^K. Define smooth proxy risk on a common task:
 
-f_m(a)=L_m(θ_m+D_m a)。
+f_m(a)=L_m(θ_m+D_m a).
 
-不同模型必须使用可比的风险定义，例如相同选择题候选上的归一化条件概率损失。不同 tokenizer 的原生逐 token NLL 不应不加处理就视为同一量纲。生成准确率和工作流成功率不光滑，本节不对它们作直接保证。
+Different models must use comparable definitions of risk, such as normalized conditional probability losses on the same multiple-choice candidate. Native per-token NLL from different tokenizers are not directly comparable without normalization. The generation accuracy and workflow success rate are not smooth, and this section does not directly guarantee them.
 
-定义投影梯度 g_m=∇_a f_m(0) 与投影曲率 H_m=∇²_a f_m(0)。若 f_m、f_n 在相同动作球内三阶可微，并具有相应三阶余项界，则由二阶 Taylor 展开和三角不等式：
+Define the projected gradient g_m=∇_a f_m(0) and the projected curvature H_m=∇²_a f_m(0). If f_m and f_n are third-order differentiable in the same action ball and have corresponding third-order remainder bounds, then by second-order Taylor expansion and triangle inequality:
 
 |[f_m(a)−f_m(0)]−[f_n(a)−f_n(0)]|
 ≤ ||a||₂ ||g_m−g_n||₂
 + 1/2 ||a||₂² ||H_m−H_n||_op
-+ (β_m+β_n)||a||₂³/6。
++ (β_m+β_n)||a||₂³/6.
 
-若数值实现的参数误差分别不超过 ε_m(a)、ε_n(a)，且局部风险关于参数的 Lipschitz 常数为 ℓ_m、ℓ_n，还需加入编译实现与基线误差项：
+If the parameter errors of the numerical implementation do not exceed ε_m(a), ε_n(a) respectively, and the Lipschitz constants of the local risk with respect to the parameters are ℓ_m, ℓ_n, the compiled implementation and baseline error terms need to be added:
 
-ℓ_m[ε_m(a)+ε_m(0)] + ℓ_n[ε_n(a)+ε_n(0)]。
+ℓ_m[ε_m(a)+ε_m(0)] + ℓ_n[ε_n(a)+ε_n(0)].
 
-这是标准 Taylor 分析的条件性推论，本身不宣称为新理论。关键研究问题是：投影响应差异是否比参数量、系列标签或原始权重统计更能预测操作的收益一致性和迁移失败。
+This is a conditional corollary of standard Taylor analysis and does not claim to be a new theory per se. The key research question is whether projected response differences are a better predictor of operational gain consistency and migration failure than parameter quantities, series labels, or raw weight statistics.
 
-该界不适用于未经处理的离散层删除；结构操作仍需合法性验证与实际干预实验。大步长、未见分布或代理风险与任务指标脱节时，界可能无用。有限数据下估计的曲率与数值误差也不是全输入域的证明。
+This analysis does not apply directly to discrete layer deletion; structural operations still require legality verification and actual intervention experiments. Bounds may be useless when the step size is large, the distribution is unseen, or the proxy risk is disconnected from the task metrics. The estimated curvature and numerical error under limited data are also not proof of the full input domain.
 
-## 3. 如何实证检验
+## 3. How to empirically test
 
-1. 固定共同任务、数据分割、训练方向来源与操作坐标语义。方向来自各模型自己的论文方法实现，不复制其他模型的权重。
-2. 在校准集上测量局部投影梯度／有限差分曲率，记录测量成本；比较纯结构／规模特征与功能响应特征。
-3. 在开发集上记录工具动作的真实增益、保护损伤和预测残差；验证局部近似何时失效。
-4. 构建 source-model→target-model 的计划迁移矩阵，比较源计划直接编译、少量目标开发查询后调整、从头随机／贝叶斯搜索及 LLM 策略。
-5. 在固定资源下比较选择质量和额外目标查询数量；最后用官方确认集检验，不依据确认集调整计划。
-6. 分析同系列／跨系列、固定 rank／固定相对参数预算、不同任务与种子。只在少数模型上观察到同号增益，不能宣称普遍规律。
+1. Fix the common tasks, data splits, training-direction sources, and action-coordinate semantics. The direction comes from the implementation of each model's own paper method and does not copy the weights of other models.
+2. Measure local projected gradients/finite difference curvatures on the calibration set and record measurement costs; compare purely structural/scale features with functional response features.
+3. Record the true gain, guard damage, and prediction residuals for tool operations on the development set; verify when local approximations fail.
+4. Construct a source-model→target-model plan migration matrix, and compare source plan direct compilation, post-query adjustment with a small amount of target development, de novo random/Bayesian search, and LLM strategies.
+5. Compare the selection quality and the number of additional target queries under fixed resources; finally use the official confirmation set to check, and do not adjust the plan based on the confirmation set.
+6. Analyze the same series/cross-series, fixed rank/fixed relative parameter budget, different tasks and seeds. Gains of the same sign are only observed on a few models, and a universal rule cannot be claimed.
 
-## 4. 与工作流应用的联系
+## 4. Connection with workflow applications
 
-专长角色各自提升不保证端到端提升。工作流风险还依赖接口分布、错误传播和验证器行为。因此需要分别测量单角色响应与替换该角色后的整个工作流响应，并比较两者的排序是否一致。
+Individual improvements in specialty roles do not guarantee end-to-end improvement. Workflow risks also depend on interface distribution, error propagation, and validator behavior. Therefore, it is necessary to measure the response of a single role and the response of the entire workflow after replacing the role, and compare whether the rankings of the two are consistent.
 
-新增形式化见[multiagent-role-programming.md第7节](multiagent-role-programming.md)：以角色条件消息分布构造轨迹TV／KL上界，说明协作优势可为后续替换提供允许损伤的参照。该标准概率分析有相同环境／有界调用等条件，未被当前激活或SVD统计数值认证，不能作为质量保持已证明的结论。
+For the new formalization, see [multiagent-role-programming.md, Section 7](multiagent-role-programming.md): Constructing the trajectory TV/KL upper bound based on role conditional message distribution, indicating that the collaborative advantage can provide a reference for allowable damage for subsequent replacements. This standard probability analysis assumes a shared environment, bounded calls, and other stated conditions, has not been numerically certified by the current activation or SVD statistics, and does not prove quality preservation.
 
-若要研究共同压缩骨干加角色 delta，可写为：
+To study the common compression backbone plus role delta, it can be written as:
 
-θ_c=G_z(θ_0+Δ_shared)，θ_k=θ_c+Δ_k。
+θ_c=G_z(θ_0+Δ_shared), θ_k=θ_c+Δ_k.
 
-但“稀疏共享骨干＋外部专用记忆”已经是 [Knowledge Offloading](https://arxiv.org/abs/2605.29075) 的直接主题，多任务共享骨干剪枝也有 [LoGIC](https://ojs.aaai.org/index.php/AAAI/article/view/39195) 等相关工作。不能把该表示作为原创结构；需要检验工作流级约束构造是否比通用／逐任务构造更有效。
+However, "sparse shared backbone + external dedicated memory" is already the direct subject of [Knowledge Offloading](https://arxiv.org/abs/2605.29075), and there are also related works such as multi-task shared backbone pruning [LoGIC](https://ojs.aaai.org/index.php/AAAI/article/view/39195). This representation cannot be taken as an original construct; one needs to examine whether the workflow-level constraint construct is more efficient than the generic/task-by-task construct.
 
-同样，[WeAct](https://arxiv.org/html/2610.26847v2) 已包含能力分离、工具化加载／卸载、保留能力及缓存／时间成本分析。本项目的潜在区别应落在工具方法语义验证、操作构造与迁移、以及工作流目标的作用，而不是注册表、切换或缓存清理本身。
+Likewise, [WeAct](https://arxiv.org/html/2610.26847v2) already includes capability separation, tooled loading/unloading, retention capabilities, and cache/time cost analysis. The potential differences in this project should lie in the role of tool method semantic validation, operation construction and migration, and workflow goals, rather than the registry, switching, or cache cleaning itself.

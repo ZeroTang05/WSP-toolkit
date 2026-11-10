@@ -1,4 +1,4 @@
-"""用宿主登记的稀疏字典分析已保存的模型激活。"""
+"""Analyze saved model activations using a sparse dictionary of host registrations."""
 
 import json
 import math
@@ -17,14 +17,14 @@ _MAX_LATENT_VALUES = 16 * 1024**2
 
 
 class FeatureTools:
-    """复用激活快照和产物服务，按版本、站点和词元坐标对齐。"""
+    """Reuse activation snapshots and artifact services, aligned by version, site, and token coordinates."""
 
     def __init__(self, tools):
         self.tools = tools
         self.root = tools.versions.root / "features"
 
     def _manifest(self, encoder_id):
-        """读取由宿主放在固定工作目录中的字典清单。"""
+        """Read the dictionary list placed by the host in the fixed working directory."""
         if not re.fullmatch(_ID_PATTERN, encoder_id):
             raise ValueError("Invalid registered encoder ID")
         folder = self.root / encoder_id
@@ -47,7 +47,7 @@ class FeatureTools:
         return folder, record
 
     def available(self, variant_id):
-        """仅列出和所选模型版本相关的字典入口。"""
+        """Only dictionary entries relevant to the selected model version are listed."""
         found = []
         for path in sorted(self.root.glob("*/manifest.json")):
             _, record = self._manifest(path.parent.name)
@@ -58,7 +58,7 @@ class FeatureTools:
 
     @staticmethod
     def _snapshot(tools, artifact_id, source, sample_indices, token_position):
-        """从快照中取有效词元，并验证字典针对的是同一模型与站点。"""
+        """Take valid tokens from the snapshot and verify that the dictionary is for the same model and site."""
         store = tools.artifacts
         array, info = store.array(artifact_id)
         if info["axes"] != ["sample", "token", "channel"] or info.get("site_id") != source["site_id"]:
@@ -91,7 +91,7 @@ class FeatureTools:
 
     @staticmethod
     def _weights(folder, record, widths):
-        """验证 Safetensors 摘要、坐标轴大小及稀疏函数的参数。"""
+        """Validate the Safetensors digest, axis sizes, and sparse function parameters."""
         path = folder / "weights.safetensors"
         if path.resolve().parent != folder or path.stat().st_size > _MAX_DICTIONARY_BYTES:
             raise ValueError("Dictionary weights must be local and at most 512 MiB")
@@ -123,7 +123,7 @@ class FeatureTools:
     def extract_features(self, encoder_id, artifact_id, method="sae", sample_indices=None, token_position=None,
                          feature_ids=None, top_features=10, top_examples=3, right_artifact_id=None,
                          right_workspace="primary", expected_variants=None):
-        """生成特征响应、最强触发位置和逐来源重建误差。"""
+        """Generate feature responses, strongest activation locations, and reconstruction errors for each source."""
         folder, record = self._manifest(encoder_id)
         if record["method"] != method or (method == "crosscoder") != (right_artifact_id is not None):
             raise ValueError("The registered method determines whether one or two snapshots are required")
@@ -152,7 +152,7 @@ class FeatureTools:
         if any(not math.isfinite(scale) or scale <= 0 for scale in scales):
             raise ValueError("Dictionary input scale must be positive and finite")
 
-        # 每个来源先在自己的坐标编码，再合并成一份特征响应。
+        # Each source is first encoded in its own coordinates and then combined into a feature response.
         blocks = []
         residual_ss = [0.0] * len(inputs)
         for start in range(0, len(coordinates), 64):

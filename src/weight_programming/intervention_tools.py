@@ -1,4 +1,4 @@
-"""通过共用登记表提供激活替换、消融与站点扫描。"""
+"""Provides activation replacement, ablation and site scanning through a shared registry."""
 
 from importlib.util import find_spec
 import math
@@ -23,7 +23,7 @@ _METRIC = {"enum": ["logit_difference", "target_probability", "target_log_probab
 
 
 class InterventionTools:
-    """沿用同一候选版本、预算账本和产物服务。"""
+    """Reuse the same candidate version, budget ledger, and artifact service."""
 
     def __init__(self, forward, versions, artifacts, sites, *, allow_gradients=False):
         self.forward = forward
@@ -35,7 +35,7 @@ class InterventionTools:
                              and forward.backend.num_layers >= 2)
 
     def specs(self):
-        """登记可以显式授权的两个工具。"""
+        """Register two tools that can be explicitly authorized."""
         site_ids = {"type": "array", "items": _STRING, "uniqueItems": True}
         cases = {"type": "array", "items": _PAIR, "minItems": 1}
         common = {"variant_id": _STRING, "site_id": _STRING, "pair": _PAIR,
@@ -81,7 +81,7 @@ class InterventionTools:
         return {"kind": kinds[site["kind"]], "layer": site["index"], "channels": channels}
 
     def _prepare_pairs(self, pairs):
-        """共用配对分词、位置和输出内存校验。"""
+        """Share paired tokenization, position, and output memory checks."""
         backend, policy = self.forward.backend, self.forward.policy
         prepared = []
         for pair in pairs:
@@ -142,7 +142,7 @@ class InterventionTools:
                 "artifact_id": artifact_id, "usage": usage}, results
 
     def _direction(self, site_id, channels, strength, direction, artifact_id):
-        """把用户方向变成选定通道上的单位方向，再按强度缩放。"""
+        """Convert the user direction into a unit vector on selected channels and scale it by strength."""
         self._site(site_id, channels)
         if strength is None or not math.isfinite(strength) or (direction is None) == (artifact_id is None):
             raise ValueError("Direction injection needs one vector and a finite strength")
@@ -168,7 +168,7 @@ class InterventionTools:
         return shift, evidence
 
     def _eraser(self, variant_id, site_id, artifact_id, control_seed):
-        """只在拟合时登记的版本和站点应用变换，可用同幅度随机方向做对照。"""
+        """Apply the transform only to versions and sites registered during fitting, optionally comparing a random direction of equal magnitude."""
         from concept_erasure import LeaceEraser
 
         self._site(site_id)
@@ -194,7 +194,7 @@ class InterventionTools:
     def run_intervention(self, variant_id, site_id, pair, method="replace", metric="logit_difference", channels=None,
                          direction=None, direction_artifact_id=None, strength=None, eraser_artifact_id=None,
                          control_seed=None):
-        """返回一次干预的三个条件与差值。"""
+        """Returns three conditions and differences for an intervention."""
         shift = transform = evidence = None
         if method == "direction":
             shift, evidence = self._direction(site_id, channels, strength, direction, direction_artifact_id)
@@ -209,7 +209,7 @@ class InterventionTools:
         return {**result, "site_id": site_id, "method": method, **rows[0][0]}
 
     def _prefilter_atp(self, variant_id, site_ids, pairs, prepared, metric):
-        """记录估计值及实际前向和反向次数，供精确干预选点。"""
+        """Record estimates and actual forward and backward pass counts to select sites for exact intervention."""
         backend = self.forward.backend
         sites = [self._site(site) for site in site_ids]
         snapshot = self.versions.snapshot(variant_id)
@@ -244,7 +244,7 @@ class InterventionTools:
 
     def localize_behavior(self, variant_id, site_ids, pairs, metric="logit_difference", method="exact_scan",
                           review_pairs=None, control_site_ids=(), forward_budget=32, verify_top_k=4, backward_budget=128):
-        """按发现集平均效应排序，同时报告对照和复核效果。"""
+        """Sort by average effect across the discovery set, reporting both control and review effects."""
         review_pairs = review_pairs or []
         ids = [*site_ids, *control_site_ids]
         if len(ids) != len(set(ids)):

@@ -1,4 +1,4 @@
-"""用已发布的 SAE 或两份真实模型快照验证特征提取。"""
+"""Validate feature extraction with published SAE or two real model snapshots."""
 
 import argparse
 import asyncio
@@ -24,7 +24,7 @@ _RELEASE = "https://huggingface.co/EleutherAI/sae-SmolLM2-135M-64x/tree/57ea2cb9
 
 
 def register_dictionary(workspace, encoder_id, tensors, sources, method, activation, **settings):
-    """宿主将现成的权重转成工具包统一的坐标和清单。"""
+    """Convert existing weights to the toolkit’s shared coordinates and manifest."""
     folder = workspace / "features" / encoder_id
     folder.mkdir(parents=True)
     path = folder / "weights.safetensors"
@@ -35,13 +35,13 @@ def register_dictionary(workspace, encoder_id, tensors, sources, method, activat
 
 
 def observe(call, variant_id, texts):
-    """在同一个逻辑站点记录前馈模块的输出。"""
+    """Record the output of the feedforward module at the same logical site."""
     return call("model_forward", {"variant_id": variant_id, "mode": "teacher_forced", "texts": texts,
                                   "observe": [_SITE]})
 
 
 def activation_values(workspace, run):
-    """仅取真实词元，排除不同句长产生的填充位置。"""
+    """Select real tokens only, excluding padding from unequal sentence lengths."""
     artifacts = ArtifactStore(workspace / "forward")
     values, _ = artifacts.array(run["artifacts"]["mlp_out_3"]["artifact_id"])
     valid, _ = artifacts.array(run["artifacts"]["valid_tokens"]["artifact_id"])
@@ -49,7 +49,7 @@ def activation_values(workspace, run):
 
 
 async def released_sae(model, source, workspace):
-    """在 MCP 上运行作者的 TopK 字典，并核对稀疏值和重建。"""
+    """Run the authors' TopK dictionary on MCP and check sparse values ​​and reconstruction."""
     settings = json.loads((source / "cfg.json").read_text(encoding="utf-8"))
     raw = load_file(source / "sae.safetensors")
     assert settings["d_in"] == 576 and not settings["skip_connection"]
@@ -96,7 +96,7 @@ async def released_sae(model, source, workspace):
 
 
 def fit_crosscoder(values):
-    """用真实对齐激活拟合一个小字典，保留两侧解码器的范数惩罚。"""
+    """Fit a small dictionary on aligned real activations, retaining the norm penalty for both decoders."""
     width = values.shape[-1]
     scales = width**0.5 / values.norm(dim=-1).mean(dim=0)
     normalized = values * scales[None, :, None]
@@ -121,7 +121,7 @@ def fit_crosscoder(values):
 
 
 def paired_crosscoder(model, dataset, workspace):
-    """对真实父模型和权重候选收集共同输入，并验证比较工具委托。"""
+    """Collect common inputs for the real parent model and weight candidate, and verify delegation to the comparison tool."""
     tools = open_inspection(model, workspace, allow_edits=True)
     call = tools.registry.call
     base = tools.variant_id

@@ -1,4 +1,4 @@
-"""Python 与 MCP 共用的工具参数、执行入口和结果校验。"""
+"""Tool parameters, execution entry points, and result verification shared by Python and MCP."""
 
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -7,14 +7,14 @@ from jsonschema import Draft202012Validator, ValidationError
 
 
 def object_schema(properties, *required):
-    """工具参数只接受明确登记的字段。"""
+    """Tool parameters only accept explicitly registered fields."""
     return {"type": "object", "properties": properties, "required": list(required),
             "additionalProperties": False}
 
 
 @dataclass(frozen=True)
 class ToolSpec:
-    """工具只登记一次，两个入口都使用同一个 Python 函数。"""
+    """The tool is only registered once, and both entries use the same Python function."""
 
     name: str
     description: str
@@ -25,7 +25,7 @@ class ToolSpec:
 
 
 class ToolRegistry:
-    """按照宿主授予的权限列工具，并在每次调用前校验输入。"""
+    """List tools according to the permissions granted by the host and verify input before each call."""
 
     def __init__(self, specs, permissions=("observe",)):
         self._tools = {}
@@ -41,11 +41,11 @@ class ToolRegistry:
             self._tools[spec.name] = (spec, Draft202012Validator(spec.input_schema), result_validator)
 
     def list_tools(self):
-        """返回当前权限可以发现的工具。"""
+        """Returns tools discoverable with current permissions."""
         return tuple(spec for spec, _, _ in self._tools.values() if spec.permission in self._permissions)
 
     def call(self, name, arguments):
-        """按与发现接口相同的权限执行登记的函数。"""
+        """Execute registered functions with the same permissions as the discovery interface."""
         spec, validator, result_validator = self._tools[name]
         if spec.permission not in self._permissions:
             raise PermissionError(f"Tool permission required: {spec.permission}")

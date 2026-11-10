@@ -56,7 +56,7 @@ class HuggingFaceBackend:
             note='Pinned independent HF implementation; not a vLLM equivalence claim or Qwen3.5 adapter')
 
     def observation_sites(self):
-        """登记本后端实际能采集的站点、运行模式和数组轴。"""
+        """Register the sites, operating modes and array axes that this backend can actually collect."""
         sites = {}
         both = ["teacher_forced", "generate"]
         channel_axes = ["sample", "token", "channel"]
@@ -84,11 +84,11 @@ class HuggingFaceBackend:
         return ids
 
     def linear_input_module(self, layer):
-        """返回登记的前馈输入站点对应的线性模块。"""
+        """Returns the linear module corresponding to the registered feedforward input site."""
         return self.layers[layer].mlp.down_proj
 
     def projection_output_sites(self, tensor):
-        """声明残差输出坐标中可投影的权重，避免仅凭相同宽度匹配。"""
+        """Declare projectable weights in residual output coordinates to avoid matching based solely on same width."""
         for layer, block in enumerate(self.layers):
             targets = [block.mlp.down_proj]
             if layer in self.full_attention_layers:
@@ -118,7 +118,7 @@ class HuggingFaceBackend:
                 if name not in self.parameters:raise ValueError('Editable source is not a model parameter')
                 parameter=self.parameters[name]
                 if snapshot.get('native_patch'):
-                    # 已物化的 FP16/BF16 补丁可无损提升到 FP32 执行。
+                    # Materialized FP16/BF16 patches can be losslessly upgraded to FP32 execution.
                     if parameter.dtype not in (value.dtype,torch.float32):
                         raise ValueError('Native patch cannot be represented in the execution precision')
                     if id(parameter) in changed_parameters:

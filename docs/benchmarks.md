@@ -1,4 +1,4 @@
-# Benchmark results · 实验结果
+# Benchmark results
 
 ## Qwen3-0.6B on GSM8K
 

@@ -1,4 +1,4 @@
-"""为三种回路方法共用连接坐标、预算和可读证据。"""
+"""Share edge coordinates, budgets, and readable evidence across three circuit methods."""
 
 from math import isfinite
 import random
@@ -17,7 +17,7 @@ _MAX_TOKENS = 128
 
 
 class EdgeTracing:
-    """在已登记的版本上执行实际边干预或可微分的边归因。"""
+    """Perform actual edge intervention or differentiable edge attribution on registered versions."""
 
     def __init__(self, tools):
         self.tools = tools
@@ -30,7 +30,7 @@ class EdgeTracing:
             self.methods.append("eap")
 
     def capabilities(self):
-        """列出真正可以作为边端点的模块级坐标。"""
+        """List the module-level coordinates that can actually serve as edge endpoints."""
         if not self.circuit:
             return {}
         return {method: {"max_tokens": _MAX_TOKENS, "granularity": "residual_components"}
@@ -49,7 +49,7 @@ class EdgeTracing:
 
     def run(self, method, variant_id, pairs, *, metric=None, path=None, edges=None, review_pairs=(),
             forward_budget=64, threshold=None, control_seed=0, strength=1.0, top_k=8):
-        """预先检查所有调用量，按方法保存实测或梯度产物。"""
+        """Check all call counts in advance and save measured or gradient artifacts by method."""
         if method not in self.methods:
             raise ValueError(f"Circuit method is unavailable on this model or permission profile: {method}")
         circuit, tools = self.circuit, self.tools
@@ -124,7 +124,7 @@ class EdgeTracing:
                              "corrupt_score": corrupt_score, "patched_score": patched_score,
                              "effect": patched_score - clean_score})
         discovery_effect = mean(row["effect"] for row in rows[:len(discovery)])
-        # 路径只有一个实测分数，图上的各段引用同一次路径干预。
+        # A path has only one measured score, and each segment on the graph refers to the same path intervention.
         graph = [{"source": source, "target": target, "score": discovery_effect, "score_scope": "whole_path"}
                  for source, target in zip(path, path[1:])]
         summary = {"mean_effect": discovery_effect, "path": path,

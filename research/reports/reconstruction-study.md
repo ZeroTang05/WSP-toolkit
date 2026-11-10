@@ -1,46 +1,46 @@
-# 从剪枝选择到误差补偿：真实0.6B的工具组合实验
+# From Pruning Selection to Error Compensation: A Real 0.6B Tool-Combination Study
 
-本文保留成文时的实验设置、结果与状态。当前项目进度见[项目状态](../../PROJECT_STATUS.md)。
+This report preserves the experimental setup, results, and status at the time of writing. See [Project status](../../PROJECT_STATUS.md) for current progress.
 
-2026-11-07。已完成局部实验，不是完整模型性能或效率结论。
+2026-11-07. Local reconstruction experiments are complete. They do not establish full-model performance or efficiency.
 
-## 工具为什么合理
+## Method Rationale
 
-Wanda类工具解决“依据权重和输入统计，选择删掉哪些连接”；直接置零不会调整保留权重。[SparseGPT](https://arxiv.org/abs/2301.00774v3)以局部输出重建为目标，引入二阶信息和逐列误差补偿。由此形成观测输入→选择删除→补偿剩余权重→检查损伤的工具链，其作用与训练型能力适配不同。
+Wanda selects connections for removal from weights and input statistics. Zeroing those connections does not adjust the retained weights. [SparseGPT](https://arxiv.org/abs/2301.00774v3) targets local output reconstruction through second-order information and columnwise error compensation. Together they form a workflow of input observation, pruning selection, compensation of retained weights, and damage measurement. This objective differs from training-based capability adaptation.
 
-新接口`input_hessian(X)`与`sparsegpt_reconstruct(W,H,...)`位于`src/weight_programming/reconstruction.py`。前者接收去除padding的token行，返回未中心化的`2 XᵀX/n`；后者使用相对阻尼与逆矩阵Cholesky因子，可固定mask或按块自适应选择。返回FP32提案、删除mask与诊断，不覆盖原检查点。
+The interfaces `input_hessian(X)` and `sparsegpt_reconstruct(W,H,...)` are implemented in `src/weight_programming/reconstruction.py`. The first consumes unpadded token rows and returns the uncentered statistic `2 XᵀX/n`. The second uses relative damping and Cholesky factors of the inverse matrix, supporting either a fixed mask or adaptive selection within blocks. It returns an FP32 proposal, a deletion mask, and diagnostics without overwriting the source checkpoint.
 
-作者[参考代码](https://github.com/IST-DASLab/sparsegpt/blob/master/sparsegpt.py)已归档并记录git blob，Apache-2.0许可证随包保存。本实现声明适配：CPU纯张量接口、FP64内部计算、每块稳定排序选精确数量、按token归一化二阶矩、增加固定mask模式；不包含N:M、量化、卷积或全模型遍历。作者阈值包含式选择与本实现的数量约定不同；对齐实际删除数量后，与作者代码的数值结果在容差内一致。相对阻尼下，正的全局H归一化不改变更新。
+The authors' [reference code](https://github.com/IST-DASLab/sparsegpt/blob/master/sparsegpt.py) is archived with its Git blob recorded, and the Apache-2.0 license is included in the package. Explicit adaptations are a CPU tensor-only interface, FP64 internal calculations, stable sorting to select an exact count in each block, token-normalized second moments, and an added fixed-mask mode. N:M sparsity, quantization, convolutions, and full-model traversal are excluded. The authors' inclusive threshold differs from this implementation's count convention; after aligning actual deletion counts, numerical results agree within tolerance. With relative damping, positive global rescaling of H does not change the update.
 
-## 实验设置
+## Experimental Setup
 
-Qwen3-0.6B、CPU FP32。既有128条训练派生校准文本共27,776 tokens。使用`model.layers.14.mlp.down_proj.weight`，1024×3072；层位置继承观测教程，并非经搜索发现最关键。
+Qwen3-0.6B runs on CPU in FP32. Calibration uses 128 training-derived texts totaling 27,776 tokens. The edited matrix is `model.layers.14.mlp.down_proj.weight`, with shape 1024×3072. Its layer was inherited from the observation tutorial, not discovered as optimal by search.
 
-前64条、13,934 tokens拟合二阶矩；后64条、13,842 tokens检查重建。均属训练派生校准集，后半部分不是公开测试。指标为`||(W_new−W_base)X||²_F / ||W_base X||²_F`，只衡量该线性映射的相对平方输出误差。未更改其他层，未运行压缩后全模型生成。
+The first 64 texts, containing 13,934 tokens, fit the second moment. The last 64 texts, containing 13,842 tokens, evaluate reconstruction on held-out calibration data. Both halves come from the training-derived calibration set; the second half is not a public test set. The metric is `||(W_new−W_base)X||²_F / ||W_base X||²_F`, measuring only the relative squared output error of this linear map. No other layer is changed, and full-model generation after compression was not evaluated.
 
-## 真实结果
+## Results
 
-保留64条文本上的误差，单位%。
+Held-out error on 64 texts, expressed as a percentage:
 
-| 方法 | 20%删除 | 50%删除 |
+| Method | 20% deleted | 50% deleted |
 |---|---:|---:|
-| 逐行幅值选择＋置零 | 0.5546 | 8.8738 |
-| 相同幅值mask＋补偿 | 0.2206 | 4.1622 |
-| 逐行Wanda选择＋置零 | 0.2254 | 3.9193 |
-| 相同Wanda mask＋补偿 | 0.1435 | 2.7075 |
-| SparseGPT自适应mask＋置零 | 0.2179 | 3.2778 |
-| 同自适应mask＋补偿 | 0.1142 | 2.0895 |
+| Rowwise magnitude selection, zeroed | 0.5546 | 8.8738 |
+| Same magnitude mask, compensated | 0.2206 | 4.1622 |
+| Rowwise Wanda selection, zeroed | 0.2254 | 3.9193 |
+| Same Wanda mask, compensated | 0.1435 | 2.7075 |
+| SparseGPT adaptive mask, zeroed | 0.2179 | 3.2778 |
+| Same adaptive mask, compensated | 0.1142 | 2.0895 |
 
-同mask对照隔离补偿效应：50%时Wanda误差减少30.9%，幅值减少53.1%，自适应减少36.3%。自适应mask使用前面列的补偿状态选取；其置零条件是事后固定该mask的归因对照，不是独立的无补偿选择算法。
+Same-mask comparisons isolate compensation: at 50% sparsity, error falls by 30.9% for Wanda, 53.1% for magnitude selection, and 36.3% for adaptive selection. The adaptive mask is chosen using the sequentially compensated state. Its zeroed condition fixes that mask afterward as an attribution control; it is not an independently selected, uncompensated algorithm.
 
-Wanda／幅值逐行选floor(输入宽度×比例)项；自适应按128列块选floor(块权重数×比例)项。20%时实际删除数分别628,736与629,136，跨选择算法的细微差别不宜过度解释。每个同mask对照的数量完全相同；50%时所有方案均删除1,572,864项。
+Wanda and magnitude selection remove `floor(input width × fraction)` entries per row. Adaptive selection removes `floor(block weight count × fraction)` entries per 128-column block. At 20%, actual deletion counts are 628,736 and 629,136 respectively, so small differences across selection algorithms should not be overinterpreted. Every same-mask comparison has identical deletion counts. At 50%, all conditions remove 1,572,864 entries.
 
-## 实验分析
+## Analysis
 
-1. 输入分布有作用：本矩阵中Wanda优于幅值选择，支持保留数据相关观测接口，但不能推广到所有层或模型。
-2. 补偿有独立作用：固定删除位置仍能减少保留文本误差，支持将补偿列为独立工具族。
-3. 权重距离不等于功能损伤：50%幅值方案的相对权重平方变化从6.22%增至补偿后的13.18%，保留输出误差却从8.87%降至4.16%。
-4. 校准外推仍有差距：50%自适应补偿的拟合误差1.35%，保留误差2.09%；需要增加校准量与跨任务分析。
-5. 后续须分别检验完整生成能力和实际稀疏执行成本。局部重建误差降低不能称为准确率提升、领域能力保留或模型加速。
+1. Input distribution matters: Wanda outperforms magnitude selection on this matrix, supporting data-dependent observation tools. This does not generalize to every layer or model.
+2. Compensation has an independent effect: held-out error falls even with fixed deletion locations, supporting compensation as a separate tool family.
+3. Weight distance does not measure functional damage directly: in the 50% magnitude condition, relative squared weight change rises from 6.22% to 13.18% after compensation, while held-out output error falls from 8.87% to 4.16%.
+4. A calibration generalization gap remains: the 50% adaptive compensated condition has 1.35% fitting error and 2.09% held-out error. Larger calibration sets and cross-task analysis are needed.
+5. Full generation capability and actual sparse-execution costs require separate evaluation. Lower local reconstruction error does not establish accuracy gains, domain-capability preservation, or model acceleration.
 
-12条件已全部完成，脚本内部记录13.68秒CPU时间，未占GPU。结果、协议与源码快照见`artifacts/toolkit/reconstruction-v1/Qwen3-0.6B/`；执行脚本`src/run_reconstruction_study.py`。大激活数组留在服务器，完成记录绑定SHA256。
+All 12 conditions completed. The script records 13.68 seconds of CPU time without using a GPU. Results, protocol, and source snapshots are in `artifacts/toolkit/reconstruction-v1/Qwen3-0.6B/`; the runner is `src/run_reconstruction_study.py`. Large activation arrays remain on the server, bound to the complete records through SHA256 checksums.

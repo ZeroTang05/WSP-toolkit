@@ -1,4 +1,4 @@
-"""用真实 GSM8K 开发样本演示配对评测和偏好分差。"""
+"""Demonstration of pairwise evaluation and preference score difference using real GSM8K development samples."""
 
 import argparse
 import asyncio

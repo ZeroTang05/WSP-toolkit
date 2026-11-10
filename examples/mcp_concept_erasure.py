@@ -1,4 +1,4 @@
-"""在真实词性标注上拟合 LEACE，再对真实模型做临时干预。"""
+"""Fit LEACE on real part-of-speech annotations, then temporarily intervene on a real model."""
 
 import argparse
 import asyncio
@@ -15,7 +15,7 @@ from transformers import AutoTokenizer
 
 
 def samples(path, count, used_words):
-    """取已标注的短句前缀，训练和复核使用不同词形。"""
+    """Take prefixes of annotated short sentences, using different word forms for training and evaluation."""
     groups = {"NOUN": [], "VERB": []}
     with path.open(encoding="utf-8") as stream:
         for sentence in parse_incr(stream):
@@ -37,7 +37,7 @@ def samples(path, count, used_words):
 
 
 async def main(model, dataset):
-    """用训练文件拟合，开发文件测读出，再比较临时干预和随机对照。"""
+    """Fit on the training file, evaluate the readout on the development file, and compare the intervention with a random control."""
     used = set()
     train = samples(dataset / "en_ewt-ud-train.conllu", 16, used)
     review = samples(dataset / "en_ewt-ud-dev.conllu", 8, used)

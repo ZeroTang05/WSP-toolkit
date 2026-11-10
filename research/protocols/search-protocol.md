@@ -1,56 +1,56 @@
-# 论文方法动作空间与控制策略：第一条可执行研究轨道
+# Paper-based action spaces and control strategies: First executable research track
 
-## 正式 v2 修订（2026-11-06）
+## Official v2 revision (2026-11-06)
 
-下文原16点／粗网格设计保留为v1执行器smoke说明。正式矩阵已经另立`search-v2`目录，使用`optimize_public_v2.py`、`search_v2.py`、`search_metrics.py`，不混合旧轨迹。
+The original 16-point/coarse grid design below is retained as a description of the v1 executor smoke test. The formal matrix uses a separate `search-v2` directory, using `optimize_public_v2.py`, `search_v2.py`, and `search_metrics.py` without mixing old tracks.
 
-- 固定方法为Task Arithmetic附录B/D的完整全局21点网格：0到1、步长0.05，base和完整LoRA两点优先计算。
-- 其他策略在四个深度组、各21级的相同动作空间内使用21次查询；层分组继续标为本项目适配。
-- ARC continuation去掉手工前导空格，采用固定harness的原始边界处理；40个跨分词器CPU案例与原函数token ID全部一致。
-- 主保护代理采用答案字符长度归一化后的选项logit CE；同时保留原始CE、两类选项log概率和acc_norm诊断。该CE是平滑代理，仍不等于官方准确率或自回归KL。
-- `run_search_matrix.py`保存不可变源码／合同快照，先运行fixed、BO、LLM的真实模型smoke，再执行四模型、三种子的五策略矩阵。任何子进程失败均停止并保留现场。
-- `audit_search.py`独立复算候选合法性、保护bootstrap、最优候选选择及base/delta绑定；此审计不能替代模型数值正确性与保留测试。
+- The fixed method is the complete global 21-point grid of Task Arithmetic Appendix B/D: 0 to 1, step size 0.05, the base and full-LoRA points are evaluated first.
+- Other strategies use 21 queries in the same action space in four depth groups, each with 21 levels; the layer grouping continues to be marked as adapted for this project.
+- ARC continuation removes manual leading spaces and uses original boundary processing with fixed harness; the 40 CPU cases involving tokenization across word boundaries all match the original function’s token IDs.
+- The main protection proxy uses option-logit cross-entropy (CE) normalized by answer character length; the original CE, both types of option log-probability, and acc_norm are retained for diagnosis. This CE is a smoothing proxy and is still not equal to the official accuracy or autoregressive KL.
+- `run_search_matrix.py` saves the immutable source code/contract snapshot, first runs the real-model smoke tests for fixed, BO, and LLM, and then executes the five-strategy matrix of four models and three seeds. A failed child process stops the run and its state is retained.
+- `audit_search.py` independently recalculates candidate legality, protection bootstrap, optimal candidate selection, and base/delta binding; this audit cannot replace model numerical correctness and retention testing.
 
-本修订在正式搜索运行前依据论文网格和标准harness接口制定，没有依据官方测试分数调整训练或选择规则。当前是已提交的实验，不是已取得的收益结论。
+This revision was developed based on the paper grid and standard harness interface before the official search was run, and no training or selection rules were adjusted based on official test scores. The experiment has been submitted; its benefits have not yet been established.
 
-状态：执行器已实现并通过 CPU 数值／策略测试，真实模型 smoke 正在排队；尚无正式搜索收益结论。本文件不是追溯性预注册。
+Status: The executor has been implemented and passed CPU numerical/strategy testing, real model smoke is being queued; no formal search benefit conclusion yet. This document is not a retroactive pre-registration.
 
-## 方法依据与适配边界
+## Method basis and adaptation boundary
 
-训练方向来自 [LoRA](https://arxiv.org/abs/2106.09685)，方向操作来自 [Task Arithmetic](https://arxiv.org/abs/2212.04089)。θ_0 保持不变，按请求计算 W_0x+c_g·(α/r)BAx。
+The training direction comes from [LoRA](https://arxiv.org/abs/2106.09685) and the direction operation comes from [Task Arithmetic](https://arxiv.org/abs/2212.04089). θ_0 remains unchanged and W_0x+c_g·(α/r)BAx is calculated as requested.
 
-将 decoder 层按 floor(4l/L) 分为四个归一化深度组，每组 c_g∈{0,0.5,1,1.5}。这是本研究明确声明的任务向量分组适配；四组是固定搜索粒度，不是论文证明的最佳粒度。后续需要全局系数和其他粒度对照。候选只有 256 个，不能据此外推到任意高维权重编程能力。
+Divide the decoder layers into four normalized depth groups by floor(4l/L), each group c_g∈{0,0.5,1,1.5}. This is the task vector grouping adaptation explicitly stated in this study; four groups is a fixed search granularity, not the optimal granularity proven in the paper. Global coefficients and other granularity comparisons are needed later. There are only 256 candidates; this does not establish arbitrary high-dimensional weight programming capability.
 
-动作由 `task_plan.py` 编译，绑定 base 指纹、训练 delta 哈希、层数与 method_id。`DeltaBank` 在请求范围应用每模块系数并移除 hooks，既不覆盖基础权重，也不反复 BF16 加减合并。最终保存 base+delta+四维 plan，无须为每个候选保存完整模型。
+The action is compiled by `task_plan.py` and bound to the base fingerprint, training delta hash, layer number and method_id. `DeltaBank` applies per-module coefficients in the requested range and removes hooks, neither overwriting base weights nor repeated BF16 merge-and-unmerge operations. Finally, the base+delta+four-dimensional plan is saved, without saving the complete model for each candidate.
 
-## 数据与目标
+## Data and goals
 
-- 方向训练使用 GSM8K train 中的独立 train view。
-- 搜索使用其独立 development view 的固定前 64 题，所有模型／种子／策略相同。
-- 保护代理使用官方 ARC-Challenge validation 的固定哈希排序前 32 题，不能读取 ARC test 参与选择。
-- 主代理：参考 rationale+答案+EOS 的 teacher-forced 风险，以答案 UTF-8 字节数归一化为 bits/byte。它不是生成正确率；参考解法也不是唯一正确解法。
-- 保护代理：真实选项相对于全部答案文本 continuation 的条件概率交叉熵，不冒称官方 acc_norm。
-- 对每个候选与 base 的逐题保护 CE 差异，固定 2000 次配对 bootstrap；95 分位数不超过 0.02 才算开发集可行。此有限样本判据不是总体能力保留保证。
-- 所有策略先评估 c=(0,0,0,0) 与 c=(1,1,1,1)，计入查询预算；base 始终是可选择的安全退路。
+- Direction training uses an independent training view of GSM8K train.
+- Search uses the same fixed first 64 questions from the independent development view for every model, seed, and strategy.
+- The protection proxy uses the first 32 questions from a fixed hash ordering of official ARC-Challenge validation; ARC test is not available for selection.
+- Main proxy: Teacher-forced risk on the reference rationale, answer, and EOS, normalized by the UTF-8 byte count of the answer in bits/byte. It is not generation accuracy; nor is the reference solution the only correct solution.
+- Protection proxy: Conditional cross-entropy of the correct option among the full answer-text continuations, without pretending to be official acc_norm.
+- For each candidate’s per-question protection CE difference from the base, use 2,000 paired bootstraps. The 95th percentile must not exceed 0.02 for development-set feasibility. This limited sample criterion is not a guarantee of overall capability retention.
+- All strategies first evaluate c=(0,0,0,0) and c=(1,1,1,1) and include them in the query budget; base is always an optional safe fallback.
 
-官方 GSM8K test、ARC test、HellaSwag validation 仅用于最后确认。HellaSwag validation 在此充当预先保留的最终分区，不能因为名称是 validation 就用于搜索。
+Official GSM8K test, ARC test, HellaSwag validation are only used for final confirmation. HellaSwag validation here acts as a pre-reserved final partition and cannot be used for searches just because the name is validation.
 
-## 控制策略与证据
+## Control strategies and evidence
 
-每策略第一阶段固定 16 次候选查询，所有策略使用同一方向、动作空间和观测数据：
+There are 16 candidate queries fixed in the first stage of each strategy, and all strategies use the same direction, action space and observation data:
 
-1. Fixed：base、完整 LoRA、两个全局缩放、逐深度组预设探针，共 16 点。用于固定方法参照和局部响应估计。
-2. Random：在剩余网格中均匀抽样。
-3. Greedy：围绕当前最优可行点枚举单坐标邻居；需承认其固定顺序是简单基线。
-4. BO：固定 RBF 核的 GP，expected improvement 乘以保护可行概率。依据 [Gardner 等，ICML 2014](https://proceedings.mlr.press/v32/gardner14.html) 的约束 BO 框架；不是该论文完整超参数推断／实验配方的复现。后续应补更充分的 BO 配置敏感性。
-5. LLM：本地 Qwen3-4B-Instruct-2507 根据相同历史风险和分组 delta/base 范数提出下一坐标；记录完整 prompt、输出、token、非法动作与随机 fallback。移除范数观测可作内部信息消融。
+1. Fixed: base, full LoRA, two global scales, per-depth group preset probes, 16 points in total. Used for fixed method reference and local response estimation.
+2. Random: Sampling uniformly in the remaining grid.
+3. Greedy: Enumerate single-coordinate neighbors around the current optimal feasible point; its fixed order needs to be recognized as a simple baseline.
+4. BO: A Gaussian process with a fixed RBF kernel, expected improvement multiplied by probability of satisfying the protection constraint. Constrained BO framework based on [Gardner et al., ICML 2014](https://proceedings.mlr.press/v32/gardner14.html); not a reproduction of the paper's complete hyperparameter inference/experimental recipe. More adequate BO configuration sensitivity should be added in the future.
+5. LLM: Local Qwen3-4B-Instruct-2507 proposes the next coordinate based on the same historical risk and group delta/base norm; records full prompts, outputs, token counts, invalid actions, and random fallbacks. Removing norm observations allows for internal information ablation.
 
-查询数相同不等于总成本相同。第一阶段只支持“相同查询数”的结论；必须另外报告训练、模型加载、控制器 token、峰值显存、目标前向和墙钟成本。记录包含排队锁等待的 setup 时间，不能将它当作纯模型加载速度。正式主张 LLM 更高效前，仍需总成本匹配和 anytime Pareto 分析。
+The same number of queries does not mean the same total cost. The first stage only supports "same number of queries" conclusions; training, model loading, controller tokens, peak memory, target forward, and wall clock costs must be additionally reported. The record includes the setup time of queued lock waiting, which cannot be regarded as pure model loading speed. Total cost matching and anytime Pareto analysis are still required before LLM can be formally claimed to be more efficient.
 
-源数据、源代码和合同快照写入运行目录。候选异常会退出并保留日志，不能把失败候选悄悄删除后只报告成功轨迹。选择后的 plan 通过独立标准 harness 在完整保留分区上确认。
+Source data, source code and contract snapshots are written to the run directory. A candidate exception stops execution and preserves logs. Failed candidates cannot be silently removed while reporting only successful runs. The selected plan is confirmed on the full held-out partition via an independent standard harness.
 
-## 跨模型分析能支持什么
+## What can cross-model analysis support?
 
-固定 16 点设计可估计各组的中心有限差分、单轴曲率和有限步长误差；它不能恢复完整 Hessian，也不能验证 `transfer-analysis.md` 中的算子范数界。比较计划在目标模型自身训练方向上的效果，而不复制其他架构的参数坐标。
+The fixed 16-point design estimates central finite differences, uniaxial curvature, and finite step errors for each group; it cannot recover the full Hessian or verify the operator norm bounds in `transfer-analysis.md`. Compare the effect of the plan in the target model's own training direction without copying the parameter coordinates of other architectures.
 
-三种训练种子用于方向构造的不确定性；若只为每个方向运行一个控制器种子，不将其解释为完整控制器随机性分析。只凭两个系列不宣称普适规律。
+Three training seeds are used for uncertainty in direction construction; running only one controller seed for each direction is not interpreted as a full controller stochastic analysis. Two model families cannot establish a universal law.
