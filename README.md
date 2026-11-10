@@ -1,5 +1,7 @@
 # WSP-toolkit
 
+![WSP-toolkit workflow: AI agent, WSP tools, and target model](assets/readme-banner.png)
+
 **Give an AI model tools to inspect, edit, and evaluate another model.**
 
 WSP stands for **Weight-Space Programming**. The toolkit wraps PyTorch, Hugging Face Transformers, Safetensors, PEFT, and established research methods into tools for AI clients and researchers. Read model weights and internal activations, make a targeted change, and compare the resulting behavior with the base model. Edits are saved separately, with a fingerprint that ties each edit to its source checkpoint.
